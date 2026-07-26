@@ -21,6 +21,8 @@ let dubbingRecordedChunks = [];
 let isDubbingExporting = false;
 let videoSourceNode = null;
 let speakerGainNode = null;
+let decodedAudioBuffer = null;
+let activeAudioSource = null;
 
 // 初期化処理
 window.onload = function () {
@@ -156,6 +158,7 @@ function handleVideoFileSelected(file) {
 
   uploadedVideoFile = file;
   uploadedVideoUrl = URL.createObjectURL(file);
+  decodedAudioBuffer = null; // リセット
 
   const videoEl = safeGetElement('source-video');
   const previewContainer = safeGetElement('video-preview-container');
@@ -170,11 +173,47 @@ function handleVideoFileSelected(file) {
   if (previewContainer) previewContainer.classList.remove('hidden');
   if (placeholder) placeholder.classList.add('hidden');
   if (btnGenerate) btnGenerate.disabled = false;
+
+  // 動画の音声を非同期でデコード
+  decodeVideoAudio(file);
+}
+
+// 動画の音声トラックを Web Audio バッファとしてデコードする関数 (CORS制限の回避)
+async function decodeVideoAudio(file) {
+  try {
+    await initDubbingAudio();
+    if (!videoAudioContext) return;
+
+    console.log("動画の音声デコードを開始します...");
+    const reader = new FileReader();
+    reader.onload = async function (e) {
+      const arrayBuffer = e.target.result;
+      videoAudioContext.decodeAudioData(arrayBuffer)
+        .then(buffer => {
+          decodedAudioBuffer = buffer;
+          console.log("音声デコード成功。バッファサイズ: " + buffer.length);
+        })
+        .catch(err => {
+          console.error("音声デコードエラー (非対応コーデックまたは無音):", err);
+          decodedAudioBuffer = null;
+        });
+    };
+    reader.readAsArrayBuffer(file);
+  } catch (err) {
+    console.error("AudioContext初期化エラー:", err);
+  }
 }
 
 // アップロード動画のリセット
 function resetVideoUpload() {
   uploadedVideoFile = null;
+  decodedAudioBuffer = null;
+  if (activeAudioSource) {
+    try {
+      activeAudioSource.stop();
+    } catch (e) {}
+    activeAudioSource = null;
+  }
   if (uploadedVideoUrl) {
     URL.revokeObjectURL(uploadedVideoUrl);
     uploadedVideoUrl = null;
@@ -572,18 +611,18 @@ function triggerKick(audioCtx, dest) {
     const gain = audioCtx.createGain();
     osc.connect(gain);
     gain.connect(dest);
-    osc.frequency.setValueAtTime(120, audioCtx.currentTime);
-    osc.frequency.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.25);
+    osc.frequency.setValueAtTime(150, audioCtx.currentTime);
+    osc.frequency.exponentialRampToValueAtTime(40, audioCtx.currentTime + 0.2);
     gain.gain.setValueAtTime(0.4, audioCtx.currentTime);
-    gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.25);
+    gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.2);
     osc.start();
-    osc.stop(audioCtx.currentTime + 0.25);
+    osc.stop(audioCtx.currentTime + 0.2);
   } catch (e) {}
 }
 
 function triggerHihat(audioCtx, dest) {
   try {
-    const bufferSize = audioCtx.sampleRate * 0.04;
+    const bufferSize = audioCtx.sampleRate * 0.05;
     const buffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
     const data = buffer.getChannelData(0);
     for (let i = 0; i < bufferSize; i++) data[i] = Math.random() * 2 - 1;
@@ -593,8 +632,8 @@ function triggerHihat(audioCtx, dest) {
     filter.type = 'highpass';
     filter.frequency.value = 8000;
     const gain = audioCtx.createGain();
-    gain.gain.setValueAtTime(0.08, audioCtx.currentTime);
-    gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.04);
+    gain.gain.setValueAtTime(0.05, audioCtx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.05);
     noise.connect(filter);
     filter.connect(gain);
     gain.connect(dest);
@@ -611,9 +650,9 @@ function playCoinSound(audioCtx, dest) {
     osc2.type = 'sine';
     osc1.frequency.setValueAtTime(987.77, audioCtx.currentTime);
     osc2.frequency.setValueAtTime(1318.51, audioCtx.currentTime + 0.05);
-    gain.gain.setValueAtTime(0, audioCtx.currentTime);
-    gain.gain.linearRampToValueAtTime(0.25, audioCtx.currentTime + 0.05);
-    gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.7);
+    gain.gain.setValueAtTime(0.001, audioCtx.currentTime);
+    gain.gain.linearRampToValueAtTime(0.2, audioCtx.currentTime + 0.05);
+    gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.7);
     osc1.connect(gain);
     osc2.connect(gain);
     gain.connect(dest);
@@ -661,33 +700,17 @@ async function exportDubbedVideo() {
 
   // ビデオを最初から再生
   videoEl.currentTime = 0;
-  
-  // 元の動画の音声を Web Audio 経由でキャプチャし、録音用ノードに接続します。
-  // スピーカー出力を消音するために videoEl.muted = true にすると Chrome では MediaElementSource も無音化されるため、
-  // videoEl.muted は false に保ち、代わりに Web Audio の GainNode を使ってスピーカー側だけを消音します。
-  videoEl.muted = false; 
+  videoEl.muted = true; // 書き出し中はプレビュー側のスピーカー音を消音
 
-  if (videoAudioContext && videoAudioDestination && videoEl) {
-    if (!videoSourceNode) {
-      try {
-        videoSourceNode = videoAudioContext.createMediaElementSource(videoEl);
-        
-        // 録音用ストリームに接続
-        videoSourceNode.connect(videoAudioDestination);
-        
-        // スピーカー出力用に GainNode を介して destination に接続
-        speakerGainNode = videoAudioContext.createGain();
-        videoSourceNode.connect(speakerGainNode);
-        speakerGainNode.connect(videoAudioContext.destination);
-      } catch (err) {
-        console.error("MediaElementSourceの作成エラー:", err);
-      }
+  // CORS制限を回避するため、事前にデコードした AudioBuffer から再生を行います
+  if (decodedAudioBuffer && videoAudioContext && videoAudioDestination) {
+    try {
+      activeAudioSource = videoAudioContext.createBufferSource();
+      activeAudioSource.buffer = decodedAudioBuffer;
+      activeAudioSource.connect(videoAudioDestination);
+    } catch (err) {
+      console.error("AudioBufferSourceNodeの作成エラー:", err);
     }
-  }
-
-  // 書き出し中はスピーカー出力を消音 (ゲインを0にする)
-  if (speakerGainNode) {
-    speakerGainNode.gain.setValueAtTime(0, videoAudioContext.currentTime);
   }
 
   // キャプチャストリーム
@@ -741,9 +764,12 @@ async function exportDubbedVideo() {
     if (statusDiv) statusDiv.classList.add('hidden');
     stopDubbingBgm();
     
-    // スピーカー出力を元に戻す (ゲインを1にする)
-    if (speakerGainNode) {
-      speakerGainNode.gain.setValueAtTime(1, videoAudioContext.currentTime);
+    // バッファ再生ソースのクリーンアップ
+    if (activeAudioSource) {
+      try {
+        activeAudioSource.stop();
+      } catch (e) {}
+      activeAudioSource = null;
     }
     videoEl.muted = false; // 音声を元に戻す
     videoEl.pause();
@@ -753,6 +779,9 @@ async function exportDubbedVideo() {
   // ビデオ再生＆録音開始
   videoEl.play();
   dubbingRecorder.start();
+  if (activeAudioSource) {
+    activeAudioSource.start(0, 0); // 音声を動画の開始に同期して再生
+  }
   startDubbingBgm();
 
   let lastFrameTime = 0;

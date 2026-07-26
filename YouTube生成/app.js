@@ -1357,14 +1357,14 @@ function triggerKick(audioCtx, dest) {
     osc.connect(gain);
     gain.connect(dest);
     
-    osc.frequency.setValueAtTime(120, audioCtx.currentTime);
-    osc.frequency.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.25);
+    osc.frequency.setValueAtTime(150, audioCtx.currentTime);
+    osc.frequency.exponentialRampToValueAtTime(40, audioCtx.currentTime + 0.2);
     
     gain.gain.setValueAtTime(0.4, audioCtx.currentTime);
-    gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.25);
+    gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.2);
     
     osc.start();
-    osc.stop(audioCtx.currentTime + 0.25);
+    osc.stop(audioCtx.currentTime + 0.2);
   } catch (e) {
     console.error(e);
   }
@@ -1373,7 +1373,7 @@ function triggerKick(audioCtx, dest) {
 // ハイハットシンセ
 function triggerHihat(audioCtx, dest) {
   try {
-    const bufferSize = audioCtx.sampleRate * 0.04;
+    const bufferSize = audioCtx.sampleRate * 0.05;
     const buffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
     const data = buffer.getChannelData(0);
     for (let i = 0; i < bufferSize; i++) {
@@ -1388,8 +1388,8 @@ function triggerHihat(audioCtx, dest) {
     filter.frequency.value = 8000;
     
     const gain = audioCtx.createGain();
-    gain.gain.setValueAtTime(0.08, audioCtx.currentTime);
-    gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.04);
+    gain.gain.setValueAtTime(0.05, audioCtx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.05);
     
     noise.connect(filter);
     filter.connect(gain);
@@ -1414,9 +1414,9 @@ function playCoinSound(audioCtx, dest) {
     osc1.frequency.setValueAtTime(987.77, audioCtx.currentTime); // B5
     osc2.frequency.setValueAtTime(1318.51, audioCtx.currentTime + 0.05); // E6
     
-    gain.gain.setValueAtTime(0, audioCtx.currentTime);
-    gain.gain.linearRampToValueAtTime(0.25, audioCtx.currentTime + 0.05);
-    gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.7);
+    gain.gain.setValueAtTime(0.001, audioCtx.currentTime);
+    gain.gain.linearRampToValueAtTime(0.2, audioCtx.currentTime + 0.05);
+    gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.7);
     
     osc1.connect(gain);
     osc2.connect(gain);
