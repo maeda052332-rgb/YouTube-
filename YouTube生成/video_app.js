@@ -568,6 +568,18 @@ async function initDubbingAudio() {
       videoAudioContext = new AudioContextClass();
       if (videoAudioContext.createMediaStreamDestination) {
         videoAudioDestination = videoAudioContext.createMediaStreamDestination();
+        
+        // Chromeの無音トラック破棄バグ対策：微弱な無音信号を常時流し、トラックをアクティブに保ちます
+        try {
+          const silentOsc = videoAudioContext.createOscillator();
+          const silentGain = videoAudioContext.createGain();
+          silentGain.gain.setValueAtTime(0.0001, videoAudioContext.currentTime); // 極微小な無音
+          silentOsc.connect(silentGain);
+          silentGain.connect(videoAudioDestination);
+          silentOsc.start();
+        } catch (oscErr) {
+          console.error("Failed to create silent oscillator:", oscErr);
+        }
       }
     }
   }
@@ -581,7 +593,8 @@ function startDubbingBgm() {
   if (!videoAudioContext) return;
   if (videoBgmInterval) clearInterval(videoBgmInterval);
 
-  const dest = videoAudioDestination ? videoAudioDestination : videoAudioContext.destination;
+  // 書き出し中は録音用、プレビュー時はスピーカー（destination）へ動的にルーティング
+  const dest = isDubbingExporting ? videoAudioDestination : videoAudioContext.destination;
   let beatCount = 0;
 
   videoBgmInterval = setInterval(() => {
@@ -723,42 +736,56 @@ async function exportDubbedVideo() {
     videoAudioDestination.stream.getAudioTracks().forEach(track => mixedStream.addTrack(track));
   }
 
-  let options = { mimeType: 'video/webm;codecs=vp9,opus' };
+  // MediaRecorder インスタンス生成 (スマホ・PC互換性を高めるため MP4/AAC 形式を最優先)
+  let options = { mimeType: 'video/mp4;codecs=avc1,mp4a' };
+  let extension = 'mp4';
+  
+  if (!MediaRecorder.isTypeSupported(options.mimeType)) {
+    options = { mimeType: 'video/mp4' };
+  }
+  if (!MediaRecorder.isTypeSupported(options.mimeType)) {
+    options = { mimeType: 'video/webm;codecs=vp9,opus' };
+    extension = 'webm';
+  }
   if (!MediaRecorder.isTypeSupported(options.mimeType)) {
     options = { mimeType: 'video/webm;codecs=vp8,opus' };
+    extension = 'webm';
   }
   if (!MediaRecorder.isTypeSupported(options.mimeType)) {
     options = { mimeType: 'video/webm' };
+    extension = 'webm';
   }
-
+  
   try {
     dubbingRecorder = new MediaRecorder(mixedStream, options);
   } catch (e) {
+    console.error('MediaRecorderの初期化に失敗しました。デフォルト設定を使います:', e);
     dubbingRecorder = new MediaRecorder(mixedStream);
+    extension = 'webm';
   }
-
+  
   dubbingRecorder.ondataavailable = (event) => {
     if (event.data && event.data.size > 0) {
       dubbingRecordedChunks.push(event.data);
     }
   };
-
+  
   dubbingRecorder.onstop = () => {
     const blob = new Blob(dubbingRecordedChunks, { type: dubbingRecorder.mimeType || 'video/webm' });
     const url = URL.createObjectURL(blob);
-
+    
     const a = document.createElement('a');
     a.style.display = 'none';
     a.href = url;
-    a.download = `吹き替え動画_${styleKey}_せどり.webm`;
+    a.download = `吹き替え動画_${styleKey}_せどり.${extension}`;
     document.body.appendChild(a);
     a.click();
-
+    
     setTimeout(() => {
       document.body.removeChild(a);
       window.URL.revokeObjectURL(url);
     }, 100);
-
+    
     isDubbingExporting = false;
     if (btnDubbing) btnDubbing.disabled = false;
     if (statusDiv) statusDiv.classList.add('hidden');
@@ -842,7 +869,7 @@ async function exportDubbedVideo() {
 
       // 2. シーン3（利益発表）突入時にコイン効果音を鳴らす
       if (sceneIdx === 2 && curTime - (totalDuration / 4 * 2) < 0.1 && curTime - lastFrameTime > 0) {
-        playCoinSound(videoAudioContext, videoAudioDestination || videoAudioContext.destination);
+        playCoinSound(videoAudioContext, isDubbingExporting ? videoAudioDestination : videoAudioContext.destination);
       }
 
       // 3. 画面中央の巨大数字表示

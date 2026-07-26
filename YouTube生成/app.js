@@ -1257,8 +1257,8 @@ function renderFrameAtTime(timeSec) {
   }
 
   // 3. 利益効果音 (シーン3突入時)
-  if (currentSceneIdx === 2 && sceneTimeOffset < 0.1 && !videoIsExporting) {
-    playCoinSound(videoAudioContext, videoAudioDestination || videoAudioContext.destination);
+  if (currentSceneIdx === 2 && sceneTimeOffset < 0.1) {
+    playCoinSound(videoAudioContext, videoIsExporting ? videoAudioDestination : videoAudioContext.destination);
   }
 
   // 4. 字幕テロップの描画 (ナレーションは巨大数字と重ならないよう最下部 Y=1130 付近に配置)
@@ -1310,6 +1310,18 @@ async function initAudioContext() {
       // 録画用にオーディオストリームノードを作成
       if (videoAudioContext.createMediaStreamDestination) {
         videoAudioDestination = videoAudioContext.createMediaStreamDestination();
+        
+        // Chromeの無音トラック破棄バグ対策：微弱な無音信号を常時流し、トラックをアクティブに保ちます
+        try {
+          const silentOsc = videoAudioContext.createOscillator();
+          const silentGain = videoAudioContext.createGain();
+          silentGain.gain.setValueAtTime(0.0001, videoAudioContext.currentTime); // 極微小な無音
+          silentOsc.connect(silentGain);
+          silentGain.connect(videoAudioDestination);
+          silentOsc.start();
+        } catch (oscErr) {
+          console.error("Failed to create silent oscillator:", oscErr);
+        }
       }
     }
   }
@@ -1323,7 +1335,8 @@ function startSynthesizedBgm() {
   if (!videoAudioContext) return;
   if (videoBgmInterval) clearInterval(videoBgmInterval);
   
-  const dest = videoAudioDestination ? videoAudioDestination : videoAudioContext.destination;
+  // 書き出し中は録画ノード、プレビュー再生時はスピーカー（destination）へ動的にルーティング
+  const dest = videoIsExporting ? videoAudioDestination : videoAudioContext.destination;
   let beatCount = 0;
   
   // 0.5秒ごとにドラムキックとハイハットをシミュレーション
@@ -1468,13 +1481,24 @@ async function exportVideoAsFile() {
     });
   }
   
-  // MediaRecorder インスタンス生成
-  let options = { mimeType: 'video/webm;codecs=vp9,opus' };
+  // MediaRecorder インスタンス生成 (スマホ・PC互換性を高めるため MP4/AAC 形式を最優先)
+  let options = { mimeType: 'video/mp4;codecs=avc1,mp4a' };
+  let extension = 'mp4';
+  
+  if (!MediaRecorder.isTypeSupported(options.mimeType)) {
+    options = { mimeType: 'video/mp4' };
+  }
+  if (!MediaRecorder.isTypeSupported(options.mimeType)) {
+    options = { mimeType: 'video/webm;codecs=vp9,opus' };
+    extension = 'webm';
+  }
   if (!MediaRecorder.isTypeSupported(options.mimeType)) {
     options = { mimeType: 'video/webm;codecs=vp8,opus' };
+    extension = 'webm';
   }
   if (!MediaRecorder.isTypeSupported(options.mimeType)) {
     options = { mimeType: 'video/webm' };
+    extension = 'webm';
   }
   
   try {
@@ -1482,6 +1506,7 @@ async function exportVideoAsFile() {
   } catch (e) {
     console.error('MediaRecorderの初期化に失敗しました。デフォルト設定を使います:', e);
     videoRecorder = new MediaRecorder(mixedStream);
+    extension = 'webm';
   }
   
   videoRecorder.ondataavailable = (event) => {
@@ -1502,7 +1527,7 @@ async function exportVideoAsFile() {
     const activeTab = document.querySelector('.script-tab-btn.active');
     const styleKey = activeTab ? activeTab.getAttribute('data-style') : 'buzz';
     const prodNameClean = currentAnalysisData.productName.replace(/[\\/:*?"<>|]/g, '');
-    a.download = `せどり動画台本_${styleKey}_${prodNameClean}.webm`;
+    a.download = `せどり動画台本_${styleKey}_${prodNameClean}.${extension}`;
     
     document.body.appendChild(a);
     a.click();
