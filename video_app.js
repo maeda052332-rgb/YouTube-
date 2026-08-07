@@ -19,6 +19,10 @@ let videoBgmInterval = null;
 let dubbingRecorder = null;
 let dubbingRecordedChunks = [];
 let isDubbingExporting = false;
+let videoSourceNode = null;
+let speakerGainNode = null;
+let decodedAudioBuffer = null;
+let activeAudioSource = null;
 
 // 初期化処理
 window.onload = function () {
@@ -110,7 +114,33 @@ function setupVideoDubbingListeners() {
   // 吹き替え動画生成
   if (btnStartDubbing) {
     btnStartDubbing.addEventListener('click', () => {
+      // ユーザージェスチャーの直下で同期的にAudioContextを初期化/再開してスマホ対策を行う
+      if (!videoAudioContext) {
+        const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+        if (AudioContextClass) {
+          videoAudioContext = new AudioContextClass();
+        }
+      }
+      if (videoAudioContext && videoAudioContext.state === 'suspended') {
+        videoAudioContext.resume();
+      }
       exportDubbedVideo();
+    });
+  }
+
+  // SRT字幕ダウンロード
+  const btnDownloadSrt = safeGetElement('btn-download-srt');
+  if (btnDownloadSrt) {
+    btnDownloadSrt.addEventListener('click', () => {
+      downloadSrtFile();
+    });
+  }
+
+  // JSONダウンロード
+  const btnDownloadJson = safeGetElement('btn-download-json');
+  if (btnDownloadJson) {
+    btnDownloadJson.addEventListener('click', () => {
+      downloadJsonScript();
     });
   }
 
@@ -138,6 +168,7 @@ function handleVideoFileSelected(file) {
 
   uploadedVideoFile = file;
   uploadedVideoUrl = URL.createObjectURL(file);
+  decodedAudioBuffer = null; // リセット
 
   const videoEl = safeGetElement('source-video');
   const previewContainer = safeGetElement('video-preview-container');
@@ -152,11 +183,47 @@ function handleVideoFileSelected(file) {
   if (previewContainer) previewContainer.classList.remove('hidden');
   if (placeholder) placeholder.classList.add('hidden');
   if (btnGenerate) btnGenerate.disabled = false;
+
+  // 動画の音声を非同期でデコード
+  decodeVideoAudio(file);
+}
+
+// 動画の音声トラックを Web Audio バッファとしてデコードする関数 (CORS制限の回避)
+async function decodeVideoAudio(file) {
+  try {
+    await initDubbingAudio();
+    if (!videoAudioContext) return;
+
+    console.log("動画の音声デコードを開始します...");
+    const reader = new FileReader();
+    reader.onload = async function (e) {
+      const arrayBuffer = e.target.result;
+      videoAudioContext.decodeAudioData(arrayBuffer)
+        .then(buffer => {
+          decodedAudioBuffer = buffer;
+          console.log("音声デコード成功。バッファサイズ: " + buffer.length);
+        })
+        .catch(err => {
+          console.error("音声デコードエラー (非対応コーデックまたは無音):", err);
+          decodedAudioBuffer = null;
+        });
+    };
+    reader.readAsArrayBuffer(file);
+  } catch (err) {
+    console.error("AudioContext初期化エラー:", err);
+  }
 }
 
 // アップロード動画のリセット
 function resetVideoUpload() {
   uploadedVideoFile = null;
+  decodedAudioBuffer = null;
+  if (activeAudioSource) {
+    try {
+      activeAudioSource.stop();
+    } catch (e) {}
+    activeAudioSource = null;
+  }
   if (uploadedVideoUrl) {
     URL.revokeObjectURL(uploadedVideoUrl);
     uploadedVideoUrl = null;
@@ -282,6 +349,7 @@ async function fetchVideoScriptFromGemini(apiKey) {
 4. 販売価格、仕入れ原価、利益額などの数値は、視聴者の心を惹きつける架空の具体的なリアル値（例: 売値14,800円、仕入れ3,800円、利益11,000円など）を設定してください。
    ※ 利益 ＝ 販売価格 － 仕入れ価格 とし、余計な手数料や送料の推測は差し引かないでください。
 5. 利益率 ＝ 利益 ÷ 販売価格 × 100 (%) を四捨五入した整数で計算してください。
+6. すべてのスクリプトスタイルにおいて、最後のシーン（4番目のシーン）の吹き替え用セリフ（speech）の末尾には、必ず視聴者に対してチャンネル登録と高評価を促す言葉（例：「チャンネル登録・高評価もよろしくね！」「チャンネル登録高評価も忘れずに！」など）を必ず含めてください。
 
 【出力フォーマット】
 以下のJSON構造のみを返してください。余計なマークダウンの \`\`\`json ラッパーや説明テキストは一切含めないでください。
@@ -366,19 +434,19 @@ function generateMockVideoScript() {
         { title: "フック", time: makeTimeStr(0), speech: "一撃利益" + formatCurrency(profit) + "！メルカリで即売れしたスニーカーの裏側を大公開！" },
         { title: "仕入れ状況", time: makeTimeStr(1), speech: "このスニーカーの仕入れ価格はなんと" + formatCurrency(purchasePrice) + "。ボロボロの状態で仕入れました。" },
         { title: "再生・出品", time: makeTimeStr(2), speech: "綺麗にクリーニングしてメルカリに出品したら、わずか30分で" + formatCurrency(sellPrice) + "で売れました！" },
-        { title: "利益確定", time: makeTimeStr(3), speech: "今回の利益は" + formatCurrency(profit) + "、利益率は驚異の" + profitRate + "%です！物販ロードマップはプロフから！" }
+        { title: "利益確定", time: makeTimeStr(3), speech: "今回の利益は" + formatCurrency(profit) + "、利益率は驚異の" + profitRate + "%です！物販ロードマップはプロフから！チャンネル登録高評価もよろしく！" }
       ],
       educational: [
         { title: "導入", time: makeTimeStr(0), speech: "物販初心者必見！" + formatCurrency(purchasePrice) + "仕入れから" + formatCurrency(profit) + "を出すための仕入れ基準を解説！" },
         { title: "ポイント解説", time: makeTimeStr(1), speech: "重要なのはソールの減り具合と限定カラーの有無。ここさえ見れば価格は3倍になります。" },
         { title: "出品手法", time: makeTimeStr(2), speech: "出品時は明るい背景で撮影し、タイトル先頭に『即購入OK・激レア』と入れるだけで売れやすくなります。" },
-        { title: "まとめ", time: makeTimeStr(3), speech: "これで販売価格は" + formatCurrency(sellPrice) + "。利益は" + formatCurrency(profit) + "になります。忘れないように保存してね！" }
+        { title: "まとめ", time: makeTimeStr(3), speech: "これで販売価格は" + formatCurrency(sellPrice) + "。利益は" + formatCurrency(profit) + "になります。忘れないように保存してね！チャンネル登録高評価をお願いします！" }
       ],
       story: [
         { title: "状況説明", time: makeTimeStr(0), speech: "資金ゼロ、物販知識ゼロのサラリーマンが、仕事帰りにふと立ち寄った店舗で見つけたスニーカー。" },
         { title: "行動", time: makeTimeStr(1), speech: "財布に残った" + formatCurrency(purchasePrice) + "を握りしめて仕入れ。不安で押しつぶされそうでした。" },
         { title: "結果", time: makeTimeStr(2), speech: "しかし、出品後すぐにスマホがチャリーン！売値はなんと" + formatCurrency(sellPrice) + "。鳥肌が立ちました。" },
-        { title: "結び", time: makeTimeStr(3), speech: "一撃利益は" + formatCurrency(profit) + "。この体験が人生を変える第一歩になりました。次はあなたの番です！" }
+        { title: "結び", time: makeTimeStr(3), speech: "一撃利益は" + formatCurrency(profit) + "。この体験が人生を変える第一歩になりました。チャンネル登録・高評価も忘れずに！" }
       ]
     }
   };
@@ -504,14 +572,30 @@ function playSingleSceneSpeech(text, button) {
 }
 
 // AudioContext 初期化
-function initDubbingAudio() {
-  if (videoAudioContext) return;
-  const AudioContextClass = window.AudioContext || window.webkitAudioContext;
-  if (AudioContextClass) {
-    videoAudioContext = new AudioContextClass();
-    if (videoAudioContext.createMediaStreamDestination) {
-      videoAudioDestination = videoAudioContext.createMediaStreamDestination();
+async function initDubbingAudio() {
+  if (!videoAudioContext) {
+    const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+    if (AudioContextClass) {
+      videoAudioContext = new AudioContextClass();
+      if (videoAudioContext.createMediaStreamDestination) {
+        videoAudioDestination = videoAudioContext.createMediaStreamDestination();
+        
+        // Chromeの無音トラック破棄バグ対策：微弱な無音信号を常時流し、トラックをアクティブに保ちます
+        try {
+          const silentOsc = videoAudioContext.createOscillator();
+          const silentGain = videoAudioContext.createGain();
+          silentGain.gain.setValueAtTime(0.0001, videoAudioContext.currentTime); // 極微小な無音
+          silentOsc.connect(silentGain);
+          silentGain.connect(videoAudioDestination);
+          silentOsc.start();
+        } catch (oscErr) {
+          console.error("Failed to create silent oscillator:", oscErr);
+        }
+      }
     }
+  }
+  if (videoAudioContext && videoAudioContext.state === 'suspended') {
+    await videoAudioContext.resume();
   }
 }
 
@@ -520,7 +604,8 @@ function startDubbingBgm() {
   if (!videoAudioContext) return;
   if (videoBgmInterval) clearInterval(videoBgmInterval);
 
-  const dest = videoAudioDestination ? videoAudioDestination : videoAudioContext.destination;
+  // 書き出し中は録音用、プレビュー時はスピーカー（destination）へ動的にルーティング
+  const dest = isDubbingExporting ? videoAudioDestination : videoAudioContext.destination;
   let beatCount = 0;
 
   videoBgmInterval = setInterval(() => {
@@ -550,18 +635,18 @@ function triggerKick(audioCtx, dest) {
     const gain = audioCtx.createGain();
     osc.connect(gain);
     gain.connect(dest);
-    osc.frequency.setValueAtTime(120, audioCtx.currentTime);
-    osc.frequency.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.25);
+    osc.frequency.setValueAtTime(150, audioCtx.currentTime);
+    osc.frequency.exponentialRampToValueAtTime(40, audioCtx.currentTime + 0.2);
     gain.gain.setValueAtTime(0.4, audioCtx.currentTime);
-    gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.25);
+    gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.2);
     osc.start();
-    osc.stop(audioCtx.currentTime + 0.25);
+    osc.stop(audioCtx.currentTime + 0.2);
   } catch (e) {}
 }
 
 function triggerHihat(audioCtx, dest) {
   try {
-    const bufferSize = audioCtx.sampleRate * 0.04;
+    const bufferSize = audioCtx.sampleRate * 0.05;
     const buffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
     const data = buffer.getChannelData(0);
     for (let i = 0; i < bufferSize; i++) data[i] = Math.random() * 2 - 1;
@@ -571,8 +656,8 @@ function triggerHihat(audioCtx, dest) {
     filter.type = 'highpass';
     filter.frequency.value = 8000;
     const gain = audioCtx.createGain();
-    gain.gain.setValueAtTime(0.08, audioCtx.currentTime);
-    gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.04);
+    gain.gain.setValueAtTime(0.05, audioCtx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.05);
     noise.connect(filter);
     filter.connect(gain);
     gain.connect(dest);
@@ -589,9 +674,9 @@ function playCoinSound(audioCtx, dest) {
     osc2.type = 'sine';
     osc1.frequency.setValueAtTime(987.77, audioCtx.currentTime);
     osc2.frequency.setValueAtTime(1318.51, audioCtx.currentTime + 0.05);
-    gain.gain.setValueAtTime(0, audioCtx.currentTime);
-    gain.gain.linearRampToValueAtTime(0.25, audioCtx.currentTime + 0.05);
-    gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.7);
+    gain.gain.setValueAtTime(0.001, audioCtx.currentTime);
+    gain.gain.linearRampToValueAtTime(0.2, audioCtx.currentTime + 0.05);
+    gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.7);
     osc1.connect(gain);
     osc2.connect(gain);
     gain.connect(dest);
@@ -613,7 +698,7 @@ async function exportDubbedVideo() {
     return;
   }
 
-  initDubbingAudio();
+  await initDubbingAudio();
 
   isDubbingExporting = true;
   dubbingRecordedChunks = [];
@@ -639,58 +724,98 @@ async function exportDubbedVideo() {
 
   // ビデオを最初から再生
   videoEl.currentTime = 0;
-  videoEl.muted = true; // 元の動画の音声を消す（吹き替えのため）
+  videoEl.muted = true; // 書き出し中はプレビュー側のスピーカー音を消音
+
+  // CORS制限を回避するため、事前にデコードした AudioBuffer から再生を行います
+  if (decodedAudioBuffer && videoAudioContext && videoAudioDestination) {
+    try {
+      activeAudioSource = videoAudioContext.createBufferSource();
+      activeAudioSource.buffer = decodedAudioBuffer;
+      activeAudioSource.connect(videoAudioDestination);
+    } catch (err) {
+      console.error("AudioBufferSourceNodeの作成エラー:", err);
+    }
+  }
 
   // キャプチャストリーム
   const canvasStream = canvas.captureStream(30);
-  const mixedStream = new MediaStream();
+  const tracks = [];
 
-  canvasStream.getVideoTracks().forEach(track => mixedStream.addTrack(track));
+  canvasStream.getVideoTracks().forEach(track => tracks.push(track));
 
   if (videoAudioDestination) {
-    videoAudioDestination.stream.getAudioTracks().forEach(track => mixedStream.addTrack(track));
+    videoAudioDestination.stream.getAudioTracks().forEach(track => tracks.push(track));
   }
 
-  let options = { mimeType: 'video/webm;codecs=vp9,opus' };
+  // スマホ対応：MediaStream作成時にトラック配列を直接渡すことで音声欠落を防ぎます
+  const mixedStream = new MediaStream(tracks);
+
+  // MediaRecorder インスタンス生成 (スマホ・PC互換性を高めるため MP4/AAC 形式を最優先)
+  let options = { mimeType: 'video/mp4;codecs=avc1,mp4a' };
+  let extension = 'mp4';
+  
+  if (!MediaRecorder.isTypeSupported(options.mimeType)) {
+    options = { mimeType: 'video/mp4' };
+  }
+  if (!MediaRecorder.isTypeSupported(options.mimeType)) {
+    options = { mimeType: 'video/webm;codecs=vp9,opus' };
+    extension = 'webm';
+  }
   if (!MediaRecorder.isTypeSupported(options.mimeType)) {
     options = { mimeType: 'video/webm;codecs=vp8,opus' };
+    extension = 'webm';
   }
   if (!MediaRecorder.isTypeSupported(options.mimeType)) {
     options = { mimeType: 'video/webm' };
+    extension = 'webm';
   }
-
+  
   try {
     dubbingRecorder = new MediaRecorder(mixedStream, options);
   } catch (e) {
+    console.error('MediaRecorderの初期化に失敗しました。デフォルト設定を使います:', e);
     dubbingRecorder = new MediaRecorder(mixedStream);
+    if (dubbingRecorder.mimeType && dubbingRecorder.mimeType.includes('mp4')) {
+      extension = 'mp4';
+    } else {
+      extension = 'webm';
+    }
   }
-
+  
   dubbingRecorder.ondataavailable = (event) => {
     if (event.data && event.data.size > 0) {
       dubbingRecordedChunks.push(event.data);
     }
   };
-
+  
   dubbingRecorder.onstop = () => {
-    const blob = new Blob(dubbingRecordedChunks, { type: 'video/webm' });
+    const blob = new Blob(dubbingRecordedChunks, { type: dubbingRecorder.mimeType || 'video/webm' });
     const url = URL.createObjectURL(blob);
-
+    
     const a = document.createElement('a');
     a.style.display = 'none';
     a.href = url;
-    a.download = `吹き替え動画_${styleKey}_せどり.webm`;
+    a.download = `吹き替え動画_${styleKey}_せどり.${extension}`;
     document.body.appendChild(a);
     a.click();
-
+    
     setTimeout(() => {
       document.body.removeChild(a);
       window.URL.revokeObjectURL(url);
     }, 100);
-
+    
     isDubbingExporting = false;
     if (btnDubbing) btnDubbing.disabled = false;
     if (statusDiv) statusDiv.classList.add('hidden');
     stopDubbingBgm();
+    
+    // バッファ再生ソースのクリーンアップ
+    if (activeAudioSource) {
+      try {
+        activeAudioSource.stop();
+      } catch (e) {}
+      activeAudioSource = null;
+    }
     videoEl.muted = false; // 音声を元に戻す
     videoEl.pause();
     alert('吹き替え動画の作成が完了し、ダウンロードを開始しました！');
@@ -699,6 +824,9 @@ async function exportDubbedVideo() {
   // ビデオ再生＆録音開始
   videoEl.play();
   dubbingRecorder.start();
+  if (activeAudioSource) {
+    activeAudioSource.start(0, 0); // 音声を動画の開始に同期して再生
+  }
   startDubbingBgm();
 
   let lastFrameTime = 0;
@@ -759,7 +887,7 @@ async function exportDubbedVideo() {
 
       // 2. シーン3（利益発表）突入時にコイン効果音を鳴らす
       if (sceneIdx === 2 && curTime - (totalDuration / 4 * 2) < 0.1 && curTime - lastFrameTime > 0) {
-        playCoinSound(videoAudioContext, videoAudioDestination || videoAudioContext.destination);
+        playCoinSound(videoAudioContext, isDubbingExporting ? videoAudioDestination : videoAudioContext.destination);
       }
 
       // 3. 画面中央の巨大数字表示
@@ -849,4 +977,67 @@ async function exportDubbedVideo() {
   }
 
   requestAnimationFrame(renderDubbingFrame);
+}
+
+// SRT字幕ファイルのダウンロード
+function downloadSrtFile() {
+  const videoEl = safeGetElement('source-video');
+  const totalDuration = videoEl ? videoEl.duration : 32;
+  const stepSec = totalDuration / 4;
+  
+  const activeTab = document.querySelector('.script-tab-btn.active');
+  const styleKey = activeTab ? activeTab.getAttribute('data-style') : 'buzz';
+  const scenes = currentVideoAnalysisData ? currentVideoAnalysisData.scripts[styleKey] : null;
+  if (!scenes) return;
+  
+  let srtContent = '';
+  
+  scenes.forEach((scene, index) => {
+    const startSec = index * stepSec;
+    const endSec = (index + 1) * stepSec;
+    
+    const formatTime = (totalSec) => {
+      const hrs = Math.floor(totalSec / 3600).toString().padStart(2, '0');
+      const mins = Math.floor((totalSec % 3600) / 60).toString().padStart(2, '0');
+      const secs = Math.floor(totalSec % 60).toString().padStart(2, '0');
+      const ms = Math.floor((totalSec % 1) * 1000).toString().padStart(3, '0');
+      return `${hrs}:${mins}:${secs},${ms}`;
+    };
+    
+    srtContent += `${index + 1}\n`;
+    srtContent += `${formatTime(startSec)} --> ${formatTime(endSec)}\n`;
+    srtContent += `${scene.speech}\n\n`;
+  });
+  
+  const blob = new Blob([srtContent], { type: 'text/srt;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  
+  const prodNameClean = currentVideoAnalysisData.productName ? currentVideoAnalysisData.productName.replace(/[\\/:*?"<>|]/g, '') : '吹き替え';
+  a.download = `字幕_${styleKey}_${prodNameClean}.srt`;
+  
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+// JSON台本データのダウンロード
+function downloadJsonScript() {
+  if (!currentVideoAnalysisData) return;
+  
+  const jsonStr = JSON.stringify(currentVideoAnalysisData, null, 2);
+  const blob = new Blob([jsonStr], { type: 'application/json;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  
+  const prodNameClean = currentVideoAnalysisData.productName ? currentVideoAnalysisData.productName.replace(/[\\/:*?"<>|]/g, '') : '吹き替え';
+  a.download = `台本データ_${prodNameClean}.json`;
+  
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
 }
