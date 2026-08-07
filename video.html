@@ -99,7 +99,13 @@
 
         <div class="output-header" style="margin-top: 1rem; border-bottom: 1.5px solid var(--border-color); padding-bottom: 1.25rem;">
           <h2><i class="fa-solid fa-file-signature"></i> 再生成された吹き替え用ナレーション台本</h2>
-          <div class="output-actions" style="display: flex; gap: 0.75rem;">
+          <div class="output-actions" style="display: flex; gap: 0.75rem; flex-wrap: wrap;">
+            <button type="button" class="btn btn-secondary" id="btn-download-srt" style="padding: 0.75rem 1.5rem; font-size: 0.95rem; border-radius: 8px;">
+              <i class="fa-solid fa-file-lines"></i> 字幕を保存 (.srt)
+            </button>
+            <button type="button" class="btn btn-secondary" id="btn-download-json" style="padding: 0.75rem 1.5rem; font-size: 0.95rem; border-radius: 8px;">
+              <i class="fa-solid fa-code"></i> 台本を保存 (.json)
+            </button>
             <button type="button" class="btn btn-generate" id="btn-video-dubbing" style="padding: 0.75rem 2rem; font-size: 0.95rem; border-radius: 8px;">
               <i class="fa-solid fa-microphone-lines"></i> 🎥 動画に新音声を吹き替えて作成
             </button>
@@ -115,6 +121,23 @@
           <p style="font-size: 0.75rem; color: var(--text-sub); margin-top: 0.5rem; font-weight: normal;">
             ※ 映像の長さ分だけレンダリングに時間がかかります。ブラウザのタブを閉じずにそのままお待ちください。
           </p>
+        </div>
+
+        <!-- 音声合成の制限に関する注意書き＆ガイド -->
+        <div class="external-integration-card" style="margin-bottom: 1.5rem; border: 1px solid var(--border-color); border-radius: 8px; padding: 1rem; background: rgba(255,255,255,0.01);">
+          <h4 style="margin-top: 0; color: var(--primary-color); display: flex; align-items: center; gap: 0.5rem;"><i class="fa-solid fa-circle-info"></i> ダウンロード動画の音声と外部連携について</h4>
+          <p style="font-size: 0.85rem; line-height: 1.6; color: var(--text-sub); margin-bottom: 0.75rem;">
+            ※ ブラウザのセキュリティ制限（サンドボックス仕様）により、ブラウザ標準の音声合成（ナレーション読み上げ）はダウンロード動画ファイルに直接録音されません。ダウンロード動画には「元の動画の音声」と「BGM・効果音」がミックスされて保存されます。<br>
+            <strong>新台本のナレーション音声を付けた完全な動画を作成するには、以下の手順（CapCut等の連携）を推奨します：</strong>
+          </p>
+          <div class="integration-guide" style="padding: 0.75rem; background: rgba(255,255,255,0.03); border-radius: 6px;">
+            <ol style="margin: 0; padding-left: 1.2rem; font-size: 0.85rem; color: var(--text-sub); display: flex; flex-direction: column; gap: 0.5rem;">
+              <li>「🎥 動画に新音声を吹き替えて作成」から、BGMと字幕が合成された動画（WebM）をダウンロードします。</li>
+              <li>「字幕を保存 (.srt)」ボタンから、SRT字幕ファイルをダウンロードします。</li>
+              <li>CapCutやPremiere Pro等にダウンロードした動画を読み込み、SRT字幕ファイルをタイムラインにドラッグ＆ドロップします。</li>
+              <li>動画編集ソフトの<strong>「テキスト読み上げ（音声合成）」機能</strong>を実行すると、極めて高品質なAIナレーションが自動生成され、動画と完全に同期した吹き替え動画が完成します。</li>
+            </ol>
+          </div>
         </div>
 
         <!-- 台本スタイル別表示 -->
