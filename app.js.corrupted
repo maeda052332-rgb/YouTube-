@@ -1,0 +1,1664 @@
+// ==========================================
+// 縺帙←繧翫す繝ｧ繝ｼ繝亥虚逕ｻ蜿ｰ譛ｬ閾ｪ蜍慕函謌� AI - 繝ｭ繧ｸ繝�け (app.js)
+// ==========================================
+
+// 繧ｰ繝ｭ繝ｼ繝舌Ν隕∫ｴ�蜿門ｾ励�繝ｫ繝代�
+function safeGetElement(id) {
+  return document.getElementById(id);
+}
+
+// 繧｢繝��繝ｭ繝ｼ繝峨＆繧後◆逕ｻ蜒上ョ繝ｼ繧ｿ
+let uploadedImageDataA = null; // Base64 DataURL
+let uploadedImageDataB = null; // Base64 DataURL
+let uploadedFileNameA = "";
+let uploadedFileNameB = "";
+
+// 迴ｾ蝨ｨ陦ｨ遉ｺ荳ｭ縺ｮ隗｣譫舌ョ繝ｼ繧ｿ
+let currentAnalysisData = null;
+
+// 髻ｳ螢ｰ蜷域��郁ｪｭ縺ｿ荳翫￡�臥畑螟画焚
+let currentUtterance = null;
+let currentPlayButton = null;
+
+// 驥鷹｡阪ヵ繧ｩ繝ｼ繝槭ャ繝磯未謨ｰ (ﾂ･1,500縺ｮ繧医≧縺ｪ蠖｢蠑上↓螟画鋤)
+function formatCurrency(amount) {
+  const num = Number(amount);
+  if (isNaN(num)) return 'ﾂ･0';
+  return 'ﾂ･' + num.toLocaleString('ja-JP');
+}
+
+// 蛻晄悄蛹門�逅�
+window.onload = function () {
+  setupUploadMechanics();
+  setupTabListeners();
+  loadSavedApiKey();
+  setupVideoGeneratorListeners();
+};
+
+// API繧ｭ繝ｼ縺ｮ閾ｪ蜍戊ｪｭ縺ｿ霎ｼ縺ｿ繝ｻ菫晏ｭ�
+function loadSavedApiKey() {
+  const apiKeyInput = safeGetElement('gemini-api-key');
+  if (!apiKeyInput) return;
+
+  // 菫晏ｭ倥＆繧後◆繧ｭ繝ｼ縺後≠繧後�閾ｪ蜍募�蜉�
+  const savedKey = localStorage.getItem('gemini_api_key');
+  if (savedKey) {
+    apiKeyInput.value = savedKey;
+  }
+
+  // 繧ｭ繝ｼ縺悟�蜉帙＆繧後ｋ縺溘�縺ｫLocalStorage縺ｫ閾ｪ蜍穂ｿ晏ｭ�
+  apiKeyInput.addEventListener('input', (e) => {
+    localStorage.setItem('gemini_api_key', e.target.value.trim());
+  });
+}
+
+
+// 繧｢繝��繝ｭ繝ｼ繝蛾未菫ゅ�繧､繝吶Φ繝育匳骭ｲ
+function setupUploadMechanics() {
+  const fileInputA = safeGetElement('file-input-a');
+  const fileInputB = safeGetElement('file-input-b');
+  const dropAreaA = safeGetElement('drop-area-a');
+  const dropAreaB = safeGetElement('drop-area-b');
+  const btnRemoveA = safeGetElement('btn-remove-a');
+  const btnRemoveB = safeGetElement('btn-remove-b');
+  const btnGenerateScript = safeGetElement('btn-generate-script');
+
+  if (!fileInputA || !fileInputB || !dropAreaA || !dropAreaB) return;
+
+  // 繝峨Λ繝�げ��ラ繝ｭ繝��譎ゅ�繝�ヵ繧ｩ繝ｫ繝亥虚菴懊ｒ繧ｭ繝｣繝ｳ繧ｻ繝ｫ
+  const preventDefaults = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+  };
+
+  ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
+    dropAreaA.addEventListener(eventName, preventDefaults, false);
+    dropAreaB.addEventListener(eventName, preventDefaults, false);
+  });
+
+  // 繝峨Λ繝�げ荳ｭ繝上う繝ｩ繧､繝�
+  ['dragenter', 'dragover'].forEach(eventName => {
+    dropAreaA.addEventListener(eventName, () => dropAreaA.classList.add('dragover'), false);
+    dropAreaB.addEventListener(eventName, () => dropAreaB.classList.add('dragover'), false);
+  });
+
+  ['dragleave', 'drop'].forEach(eventName => {
+    dropAreaA.addEventListener(eventName, () => dropAreaA.classList.remove('dragover'), false);
+    dropAreaB.addEventListener(eventName, () => dropAreaB.classList.remove('dragover'), false);
+  });
+
+  // 繝峨Ο繝��譎ゅ�繝輔ぃ繧､繝ｫ蜿門ｾ�
+  dropAreaA.addEventListener('drop', (e) => {
+    const file = e.dataTransfer.files[0];
+    handleFileSelected(file, 'A');
+  }, false);
+
+  dropAreaB.addEventListener('drop', (e) => {
+    const file = e.dataTransfer.files[0];
+    handleFileSelected(file, 'B');
+  }, false);
+
+  // 鬆伜沺繧ｯ繝ｪ繝�け縺ｧ繝輔ぃ繧､繝ｫ驕ｸ謚槭ム繧､繧｢繝ｭ繧ｰ繧帝幕縺�
+  dropAreaA.addEventListener('click', () => {
+    fileInputA.click();
+  });
+
+  dropAreaB.addEventListener('click', () => {
+    fileInputB.click();
+  });
+
+  // 繝輔ぃ繧､繝ｫ繧､繝ｳ繝励ャ繝医�繧ｯ繝ｪ繝�け縺ｫ繧医ｋ驕ｸ謚�
+  fileInputA.addEventListener('change', (e) => {
+    handleFileSelected(e.target.files[0], 'A');
+  });
+
+  fileInputB.addEventListener('change', (e) => {
+    handleFileSelected(e.target.files[0], 'B');
+  });
+
+  // 蛟句挨繝輔ぃ繧､繝ｫ蜑企勁��繝懊ち繝ｳ��
+  if (btnRemoveA) {
+    btnRemoveA.onclick = (e) => {
+      e.stopPropagation();
+      resetUpload('A');
+    };
+  }
+
+  if (btnRemoveB) {
+    btnRemoveB.onclick = (e) => {
+      e.stopPropagation();
+      resetUpload('B');
+    };
+  }
+
+  // 蜿ｰ譛ｬ逕滓�螳溯｡後�繧ｿ繝ｳ
+  if (btnGenerateScript) {
+    btnGenerateScript.onclick = () => {
+      executeScriptGenerationFlow();
+    };
+  }
+}
+
+// 繝輔ぃ繧､繝ｫ驕ｸ謚樊凾縺ｮ隱ｭ縺ｿ霎ｼ縺ｿ
+function handleFileSelected(file, side) {
+  if (!file) return;
+  if (!file.type.startsWith('image/')) {
+    alert('逕ｻ蜒上ヵ繧｡繧､繝ｫ��NG縲゛PG縲仝EBP縺ｪ縺ｩ�峨ｒ驕ｸ謚槭＠縺ｦ縺上□縺輔＞縲�');
+    return;
+  }
+
+  const reader = new FileReader();
+  reader.readAsDataURL(file);
+  reader.onloadend = () => {
+    const base64Data = reader.result;
+    if (side === 'A') {
+      uploadedImageDataA = base64Data;
+      uploadedFileNameA = file.name;
+      
+      const img = safeGetElement('preview-image-a');
+      if (img) img.src = base64Data;
+      const preview = safeGetElement('preview-container-a');
+      if (preview) preview.classList.remove('hidden');
+      const placeholder = safeGetElement('placeholder-a');
+      if (placeholder) placeholder.classList.add('hidden');
+    } else {
+      uploadedImageDataB = base64Data;
+      uploadedFileNameB = file.name;
+      
+      const img = safeGetElement('preview-image-b');
+      if (img) img.src = base64Data;
+      const preview = safeGetElement('preview-container-b');
+      if (preview) preview.classList.remove('hidden');
+      const placeholder = safeGetElement('placeholder-b');
+      if (placeholder) placeholder.classList.add('hidden');
+    }
+    
+    updateGenerateButtonState();
+  };
+}
+
+// 繧｢繝��繝ｭ繝ｼ繝峨ヵ繧｡繧､繝ｫ縺ｮ繝ｪ繧ｻ繝�ヨ
+function resetUpload(side) {
+  if (side === 'A') {
+    uploadedImageDataA = null;
+    uploadedFileNameA = "";
+    const input = safeGetElement('file-input-a');
+    if (input) input.value = "";
+    const preview = safeGetElement('preview-container-a');
+    if (preview) preview.classList.add('hidden');
+    const placeholder = safeGetElement('placeholder-a');
+    if (placeholder) placeholder.classList.remove('hidden');
+  } else {
+    uploadedImageDataB = null;
+    uploadedFileNameB = "";
+    const input = safeGetElement('file-input-b');
+    if (input) input.value = "";
+    const preview = safeGetElement('preview-container-b');
+    if (preview) preview.classList.add('hidden');
+    const placeholder = safeGetElement('placeholder-b');
+    if (placeholder) placeholder.classList.remove('hidden');
+  }
+  updateGenerateButtonState();
+}
+
+// 螳溯｡後�繧ｿ繝ｳ縺ｮ繧｢繧ｯ繝�ぅ繝悶�髱槭い繧ｯ繝�ぅ繝門宛蠕｡
+function updateGenerateButtonState() {
+  const btn = safeGetElement('btn-generate-script');
+  if (btn) {
+    btn.disabled = !(uploadedImageDataA && uploadedImageDataB);
+  }
+}
+
+// 繧ｿ繝悶�繝ｪ繧ｹ繝翫�逋ｻ骭ｲ
+function setupTabListeners() {
+  const tabBtns = document.querySelectorAll('.script-tab-btn');
+  tabBtns.forEach(btn => {
+    btn.onclick = (e) => {
+      tabBtns.forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      const style = btn.getAttribute('data-style');
+      if (currentAnalysisData) {
+        renderScriptViewer(currentAnalysisData.scripts[style]);
+      }
+    };
+  });
+
+  const btnCopyAll = safeGetElement('btn-copy-all');
+  if (btnCopyAll) {
+    btnCopyAll.onclick = () => {
+      const activeTab = document.querySelector('.script-tab-btn.active');
+      const style = activeTab ? activeTab.getAttribute('data-style') : 'buzz';
+      if (currentAnalysisData) {
+        copyEntireScript(currentAnalysisData.scripts[style], style);
+      }
+    };
+  }
+}
+
+// AI蜃ｦ逅�メ繧ｧ繝ｼ繝ｳ縺ｮ螳溯｡後ヵ繝ｭ繝ｼ
+async function executeScriptGenerationFlow() {
+  // 蜀咲函荳ｭ縺ｮ髻ｳ螢ｰ繧偵く繝｣繝ｳ繧ｻ繝ｫ
+  if (window.speechSynthesis) {
+    window.speechSynthesis.cancel();
+  }
+
+  const statusCard = safeGetElement('generation-status-card');
+  const outputCard = safeGetElement('script-output-card');
+  const progressBar = safeGetElement('status-progress-bar');
+  const alertEl = safeGetElement('success-alert');
+
+  if (statusCard) statusCard.classList.remove('hidden');
+  if (outputCard) outputCard.classList.add('hidden');
+  if (alertEl) alertEl.style.display = 'none';
+
+  const steps = ['step-1', 'step-2', 'step-3', 'step-4'];
+  steps.forEach(id => {
+    const el = safeGetElement(id);
+    if (el) {
+      el.className = 'step-pending';
+      const icon = el.querySelector('i');
+      if (icon) icon.className = 'fa-regular fa-circle';
+    }
+  });
+  if (progressBar) progressBar.style.width = '0%';
+
+  // 1. 螳溽ｸｾ繧ｹ繧ｯ繧ｷ繝ｧ隗｣譫�
+  await changeStepState('step-1', 'active', 25);
+  await delay(1200);
+  await changeStepState('step-1', 'completed', 25);
+
+  // 2. 莉募�繧碁≡鬘崎ｧ｣譫�
+  await changeStepState('step-2', 'active', 50);
+  await delay(1200);
+  await changeStepState('step-2', 'completed', 50);
+
+  // 3. 蛻ｩ逶願ｨ育ｮ�
+  await changeStepState('step-3', 'active', 75);
+  await delay(1000);
+  await changeStepState('step-3', 'completed', 75);
+
+  // 4. 蜿ｰ譛ｬ閾ｪ蜍慕函謌�
+  await changeStepState('step-4', 'active', 90);
+
+  let resultData = null;
+  const apiKey = safeGetElement('gemini-api-key')?.value.trim();
+
+  if (apiKey) {
+    try {
+      resultData = await fetchFromGeminiAPI(apiKey, uploadedImageDataA, uploadedImageDataB);
+    } catch (err) {
+      console.error('Gemini API蜻ｼ縺ｳ蜃ｺ縺励お繝ｩ繝ｼ縲ゅす繝溘Η繝ｬ繝ｼ繧ｷ繝ｧ繝ｳ縲:', err);
+      alert('Gemini API縺ｮ螳溯｡御ｸｭ縺ｫ繧ｨ繝ｩ繝ｼ縺檎匱逕溘＠縺溘◆繧√€√ョ繝｢繝｢繝ｼ繝峨〒逕滓縺励∪縺吶€n隧ｳ邏ｰ: ' + err.message);
+      resultData = simulateHeuristicsAnalysis();
+    }
+  } else {
+    resultData = simulateHeuristicsAnalysis();
+  }
+
+  // 蛻ｩ逶翫→蛻ｩ逶顔紫繧谷S蛛ｴ縺ｧ蠑ｷ蛻ｶ蜀崎ｨ育ｮ (AI縺ｮ邂苓｡楢ｨ育ｮ励お繝ｩ繝ｼ繧ヰ繧ｰ繧堤｢ｺ螳溘↓髦ｲ縺舌€ら判蜒上°繧芽ｪｭ縺ｿ蜿悶▲縺滄€∵侭繝ｻ謇区焚譁吶′縺ゅｌ縺ｰ蟾ｮ縺怜ｼ輔￥)
+  if (resultData) {
+    const shipping = Number(resultData.shipping) || 0;
+    const fee = Number(resultData.fee) || 0;
+    resultData.profit = resultData.sellPrice - resultData.purchasePrice - shipping - fee;
+    resultData.profitRate = resultData.sellPrice > 0 ? Math.round((resultData.profit / resultData.sellPrice) * 100) : 0;
+  }
+
+  await delay(800);
+  await changeStepState('step-4', 'completed', 100);
+  await delay(500);
+
+  if (statusCard) statusCard.classList.add('hidden');
+  
+  displayScriptOutput(resultData);
+}
+
+// 繝ｦ繝ｼ繝ぅ繝ｪ繝ぅ: 繝ぅ繝ｬ繧､
+function delay(ms) {
+  return new Promise(res => setTimeout(res, ms));
+}
+
+// 騾ｲ陦御ｸｭ繧ｹ繝ャ繝励UI譖ｴ譁ｰ
+async function changeStepState(stepId, state, percentage) {
+  const el = safeGetElement(stepId);
+  const bar = safeGetElement('status-progress-bar');
+  if (bar) bar.style.width = `${percentage}%`;
+
+  if (el) {
+    el.className = `step-${state}`;
+    const icon = el.querySelector('i');
+    if (icon) {
+      if (state === 'active') {
+        icon.className = 'fa-solid fa-spinner fa-spin';
+      } else if (state === 'completed') {
+        icon.className = 'fa-solid fa-circle-check';
+      } else {
+        icon.className = 'fa-regular fa-circle';
+      }
+    }
+  }
+}
+
+function simulateHeuristicsAnalysis() {
+  let sellPrice = 13500;
+  let purchasePrice = 3800;
+  let productName = "仕入れた商品";
+
+  const matchA = uploadedFileNameA.match(/\d+/);
+  if (matchA && matchA[0]) {
+        visual: "繧ｫ繝｡繝ｩ縺ｫ蜷代°縺｣縺ｦ謇区魚縺阪☆繧狗ｬ鷹｡斐�譏�蜒上�\n繝励Ο繝輔ぅ繝ｼ繝ｫ縺ｮ繝ｪ繝ｳ繧ｯ蜈医ｒ諡｡螟ｧ縺励※縲∵欠蟾ｮ縺咏泙蜊ｰ繝�Ο繝��繧定｡ｨ遉ｺ縲�GM縺後ヵ繧ｧ繝ｼ繝峨い繧ｦ繝医�",
+        speech: "縺薙�繧ｸ繝｣繝ｳ繝ｫ縺ｮ鄒主袖縺励＞莉募�繧悟渕貅悶ｒ縺ｾ縺ｨ繧√◆縲主�蠢��Ο繝ｼ繝峨�繝��縲上�縲√�繝ｭ繝輔Μ繝ｳ繧ｯ縺ｧ莉翫□縺醍┌譁咎�莉倅ｸｭ�∽ｻ翫�縺�■縺ｫ蜿励￠蜿悶▲縺ｦ縺ｭ�√メ繝｣繝ｳ繝阪Ν逋ｻ骭ｲ鬮倩ｩ穂ｾ｡繧ゅｈ繧阪＠縺上���"
+      }
+    ],
+    educational: [
+      {
+        title: "繝輔ャ繧ｯ��う繝ｳ繝医Ο",
+        time: "0縲�5遘�",
+        visual: "譏弱ｋ縺�が繝輔ぅ繧ｹ縺ｮ閭梧勹縲りｩｱ縺玲焔縺檎ｬ鷹｡斐〒繝懊�繝峨ｒ謖�☆縲�\n邱題牡縺ｮ繝�Ο繝��縺ｧ縲悟茜逶顔紫" + profitRate + "%�√い繝代Ξ繝ｫ迚ｩ雋ｩ縺ｮ逵溷ｮ溘阪ｒ陦ｨ遉ｺ縲�",
+        speech: "蜀咲樟諤ｧ謚懃ｾ､�∽ｻ雁屓縺ｯ繝｡繝ｫ繧ｫ繝ｪ縺ｧ莉募�繧�" + fCost + "縺九ｉ蛻ｩ逶�" + fProfit + "繧貞�縺励◆縲∝�菴鍋噪縺ｪ蝠�刀驕ｸ螳壹ユ繧ｯ繝九ャ繧ｯ繧定ｧ｣隱ｬ縺励∪縺吶�"
+      },
+      {
+        title: "繝弱え繝上え隗｣隱ｬ",
+        time: "5縲�18遘�",
+        visual: "蝠�刀縺ｮ繧ｳ繝ｳ繝�ぅ繧ｷ繝ｧ繝ｳ驛ｨ蛻�ｼ医た繝ｼ繝ｫ繧�ち繧ｰ縺ｪ縺ｩ�峨ｒ繧ｹ繝ｩ繧､繝峨〒繧ｺ繝ｼ繝�縲�\n繧ｿ繧､繝医Ν譁�ｭ怜�蜉帙�繧ｳ繝�→縺励※縲檎憾諷九√Δ繝�Ν蜷阪�剞螳壹阪↑縺ｩ縺ｮ繧ｭ繝ｼ繝ｯ繝ｼ繝峨ｒ逶ｮ遶九◆縺帙ｋ貍泌�縲�",
+        speech: "驥崎ｦ√↑縺ｮ縺ｯ繧ｭ繝ｼ繝ｯ繝ｼ繝芽ｨｭ險医〒縺吶ゅΓ繝ｫ繧ｫ繝ｪ縺ｧ讀懃ｴ｢縺輔ｌ繧�☆縺�弱さ繝ｩ繝懷錐縲上ｄ縲朱剞螳壹き繝ｩ繝ｼ縲上ｒ蝠�刀蜷阪�蜈磯�ｭ縺ｫ險倩ｼ峨☆繧九□縺代〒縲√う繝ｳ繝励Ξ繝�す繝ｧ繝ｳ縺ｯ荳豌励↓3蛟阪↓縺ｪ繧翫∪縺吶�"
+      },
+      {
+        title: "謨ｰ蟄� of 陬丈ｻ倥￠",
+        time: "18縲�32遘�",
+        visual: "謨ｰ蛟､繧偵げ繝ｩ繝募喧縺励◆繧ｹ繝ｩ繧､繝峨ｒ陦ｨ遉ｺ縲�\n莉募�繧御ｾ｡譬ｼ: " + fCost + "縲∝｣ｲ蛟､: " + fSell + "縲∬ｫｸ邨瑚ｲｻ繧定ｨ育ｮ励＠縺溯｡ｨ縲�\n荳ｭ蜿､蜩√ｒ邁｡蜊倥↓繝｡繝ｳ繝�リ繝ｳ繧ｹ�育｣ｨ縺丈ｽ懈･ｭ�峨＠縺ｦ縺�ｋ1.5蛟埼溘�譏�蜒上�",
+        speech: "莉雁屓縺ｮ蜴滉ｾ｡縺ｯ" + fCost + "縺ｧ縺吶′縲�100蝮��豸医＠繧ｴ繝�繧ｯ繝ｪ繝ｼ繝翫�縺ｧ縺ｻ繧薙�1蛻�｣ｨ縺�※縺九ｉ蜃ｺ蜩√＠縺溘％縺ｨ縺ｧ縲∫嶌蝣ｴ繧医ｊ邏�3,000蜀�ｫ倥￥螢ｲ繧九％縺ｨ縺ｫ謌仙粥縺励∪縺励◆縲�"
+      },
+      {
+        title: "縺ｾ縺ｨ繧√→CTA",
+        time: "32縲�45遘�",
+        visual: "縺�＞縺ｭ縺ｨ繝悶ャ繧ｯ繝槭�繧ｯ�井ｿ晏ｭ倥�繧ｿ繝ｳ�峨ｒ謖�＠遉ｺ縺吶�繝��繧｢繝��繧､繝ｩ繧ｹ繝医�\n雉ｪ蝠上ｒ菫�☆繧ｳ繝｡繝ｳ繝医ユ繝ｭ繝��縲�",
+        speech: "蠕後°繧我ｻ募�繧悟ｺ苓�縺ｧ隕玖ｿ斐○繧九ｈ縺�↓縲∽ｻ翫�縺�■縺ｫ縺薙�蜍慕判繧剃ｿ晏ｭ倥＠縺ｦ縺翫＞縺ｦ縺上□縺輔＞縺ｭ縲りｩｳ縺励＞雉ｪ蝠上�繧ｳ繝｡繝ｳ繝域ｬ�〒蜿嶺ｻ倅ｸｭ縺ｧ縺呻ｼ√メ繝｣繝ｳ繝阪Ν逋ｻ骭ｲ鬮倩ｩ穂ｾ｡繧ゅ♀鬘倥＞縺励∪縺呻ｼ�"
+      }
+    ],
+    story: [
+      {
+        title: "繧ｪ繝ｼ繝励ル繝ｳ繧ｰ",
+        time: "0縲�6遘�",
+        visual: "蟆代＠證励ａ縺ｮ螳､蜀�ゅせ繝槭�縺ｮ逕ｻ髱｢繧堤惻繧√↑縺後ｉ縺溘ａ諱ｯ繧偵▽縺乗丐蜒上�\n遯∫┯繝｡繝ｫ繧ｫ繝ｪ縺ｮ螢ｲ荳企夂衍髻ｳ縺後後メ繝｣繝ｪ繝ｼ繝ｳ�√阪→魑ｴ繧翫∬｡ｨ諠�′繝代ャ縺ｨ譏弱ｋ縺上↑繧区ｼ泌�縲�",
+        speech: "蜑ｯ讌ｭ繧定ｫｦ繧√°縺代※縺�◆蟷ｳ蜃｡縺ｪ莨夂､ｾ蜩｡縺後∽ｻ穂ｺ句ｸｰ繧翫�繧上★縺�1譎る俣縺ｧ譌･邨ｦ" + fProfit + "繧堤ｨｼ縺主�縺励◆繝ｪ繧｢繝ｫ縺ｪ荳譌･縲�"
+      },
+      {
+        title: "驕主悉縺ｮ闍ｦ謔ｩ",
+        time: "6縲�20遘�",
+        visual: "鬧��繝帙�繝�繧偵≧縺､繧縺�※豁ｩ縺丞ｧｿ縲ゅΜ繧ｵ繧､繧ｯ繝ｫ繧ｷ繝ｧ繝��縺ｮ譽壹�蜑阪ｒ縺�ｍ縺�ｍ縺励※菴輔ｂ雋ｷ縺医★縺ｫ蟶ｰ繧矩℃蜴ｻ縺ｮ讒伜ｭ舌�\n逋ｽ鮟偵�蝗樊Φ鬚ｨ繧ｨ繝輔ぉ繧ｯ繝医�",
+        speech: "謇句叙繧�18荳�よｯ取律驕�￥縺ｾ縺ｧ蜒阪＞縺ｦ繧りｲｯ驥代�蠅励∴縺壹∫┬縺｣縺ｦ迚ｩ雋ｩ繧貞ｧ九ａ縺ｾ縺励◆縺後∵怙蛻昴�縺ｩ繧後ｒ隕九※繧りｵ､蟄励↓隕九∴縺ｦ縲∽ｻ募�繧後′縺ｧ縺阪★謖ｫ謚伜ｯｸ蜑阪〒縺励◆縲�"
+      },
+      {
+        title: "繝悶Ξ繧､繧ｯ繧ｹ繝ｫ繝ｼ",
+        time: "20縲�40遘�",
+        visual: "縺雁ｺ励�譽壹�螂･縺九ｉ莉雁屓縺ｮ蝠�刀��" + productName + "�峨ｒ螳晉黄縺ｮ繧医≧縺ｫ隕九▽縺大�縺呎丐蜒擾ｼ医き繝ｩ繝ｼ縺ｫ謌ｻ繧具ｼ峨�\n莉募�繧梧凾縺ｮ蜴滉ｾ｡繝ｬ繧ｷ繝ｼ繝茨ｼ�" + fCost + "�峨′繝昴ャ繝励い繝��. 蜃ｺ蜩∫峩蠕後↓螢ｲ繧後◆螻･豁ｴ逕ｻ髱｢縺ｮ陦ｨ遉ｺ縲�",
+        speech: "縺ｧ繧ゅ√Μ繧ｵ繝ｼ繝√�閠�∴譁ｹ繧貞､峨∴縺ｦ隕九▽縺代◆縺ｮ縺後％縺ｮ" + productName + "縲ゆｻ募�繧悟次萓｡" + fCost + "縺後∝�蜩∝ｾ後ｏ縺壹°2譎る俣縺ｧ" + fSell + "縺ｧ螢ｲ繧後∵焔蜈�↓" + fProfit + "谿九▲縺溘→縺阪∵悽蠖薙↓髴�∴縺ｾ縺励◆縲�"
+      },
+      {
+        title: "譛ｪ譚･縺ｸ縺ｮ蜻ｼ縺ｳ縺九￠",
+        time: "40縲�55遘�",
+        visual: "繝代た繧ｳ繝ｳ縺ｫ蜷代°縺｣縺ｦ蜑榊髄縺阪↓菴懈･ｭ縺励※縺�ｋ閭御ｸｭ縺ｮ譏�蜒上�\n逕ｻ髱｢荳九↓縲後さ繝｡繝ｳ繝域ｬ�↓縲主憶讌ｭ縲上→蜈･蜉帙阪→繧｢繝九Γ繝ｼ繧ｷ繝ｧ繝ｳ譁�ｭ励ｒ陦ｨ遉ｺ縲�",
+        speech: "豁｣縺励＞遏･隴倥＆縺郁ｺｫ縺ｫ縺､縺代ｌ縺ｰ縲∽ｺｺ逕溘�閾ｪ蛻��謇九〒螟峨∴繧峨ｌ縺ｾ縺吶ょヵ縺悟�蠢��°繧画怦10荳�ｨｼ縺�□繧ｹ繝�ャ繝励�縲√さ繝｡繝ｳ繝域ｬ�↓縲主憶讌ｭ縲上→譖ｸ縺�※縺上ｌ縺滓婿縺ｫ蜈ｱ譛峨＠縺ｾ縺呻ｼ√メ繝｣繝ｳ繝阪Ν逋ｻ骭ｲ縺ｨ鬮倩ｩ穂ｾ｡繧ょｿ倥ｌ縺壹↓��"
+      }
+    ]ｦ繝医�",
+        speech: "縺薙�繧ｸ繝｣繝ｳ繝ｫ縺ｮ鄒主袖縺励＞莉募�繧悟渕貅悶ｒ縺ｾ縺ｨ繧√◆縲主�蠢��Ο繝ｼ繝峨�繝��縲上�縲√�繝ｭ繝輔Μ繝ｳ繧ｯ縺ｧ莉翫□縺醍┌譁咎�莉倅ｸｭ�∽ｻ翫�縺�■縺ｫ蜿励￠蜿悶▲縺ｦ縺ｭ��"
+      }
+    ],
+    educational: [
+      {
+        title: "繝輔ャ繧ｯ��う繝ｳ繝医Ο",
+        time: "0縲�5遘�",
+        visual: "譏弱ｋ縺�が繝輔ぅ繧ｹ縺ｮ閭梧勹縲りｩｱ縺玲焔縺檎ｬ鷹｡斐〒繝懊�繝峨ｒ謖�☆縲�\n邱題牡縺ｮ繝�Ο繝��縺ｧ縲悟茜逶顔紫" + profitRate + "%�√い繝代Ξ繝ｫ迚ｩ雋ｩ縺ｮ逵溷ｮ溘阪ｒ陦ｨ遉ｺ縲�",
+        speech: "蜀咲樟諤ｧ謚懃ｾ､�∽ｻ雁屓縺ｯ繝｡繝ｫ繧ｫ繝ｪ縺ｧ莉募�繧�" + fCost + "縺九ｉ蛻ｩ逶�" + fProfit + "繧貞�縺励◆縲∝�菴鍋噪縺ｪ蝠�刀驕ｸ螳壹ユ繧ｯ繝九ャ繧ｯ繧定ｧ｣隱ｬ縺励∪縺吶�"
+      },
+      {
+        title: "繝弱え繝上え隗｣隱ｬ",
+        time: "5縲�18遘�",
+        visual: "蝠�刀縺ｮ繧ｳ繝ｳ繝�ぅ繧ｷ繝ｧ繝ｳ驛ｨ蛻�ｼ医た繝ｼ繝ｫ繧�ち繧ｰ縺ｪ縺ｩ�峨ｒ繧ｹ繝ｩ繧､繝峨〒繧ｺ繝ｼ繝�縲�\n繧ｿ繧､繝医Ν譁�ｭ怜�蜉帙�繧ｳ繝�→縺励※縲檎憾諷九√Δ繝�Ν蜷阪�剞螳壹阪↑縺ｩ縺ｮ繧ｭ繝ｼ繝ｯ繝ｼ繝峨ｒ逶ｮ遶九◆縺帙ｋ貍泌�縲�",
+        speech: "驥崎ｦ√↑縺ｮ縺ｯ繧ｭ繝ｼ繝ｯ繝ｼ繝芽ｨｭ險医〒縺吶ゅΓ繝ｫ繧ｫ繝ｪ縺ｧ讀懃ｴ｢縺輔ｌ繧�☆縺�弱さ繝ｩ繝懷錐縲上ｄ縲朱剞螳壹き繝ｩ繝ｼ縲上ｒ蝠�刀蜷阪�蜈磯�ｭ縺ｫ險倩ｼ峨☆繧九□縺代〒縲√う繝ｳ繝励Ξ繝�す繝ｧ繝ｳ縺ｯ荳豌励↓3蛟阪↓縺ｪ繧翫∪縺吶�"
+      },
+      {
+        title: "謨ｰ蟄励�陬丈ｻ倥￠",
+        time: "18縲�32遘�",
+        visual: "謨ｰ蛟､繧偵げ繝ｩ繝募喧縺励◆繧ｹ繝ｩ繧､繝峨ｒ陦ｨ遉ｺ縲�\n莉募�繧御ｾ｡譬ｼ: " + fCost + "縲∝｣ｲ蛟､: " + fSell + "縲∬ｫｸ邨瑚ｲｻ繧定ｨ育ｮ励＠縺溯｡ｨ縲�\n荳ｭ蜿､蜩√ｒ邁｡蜊倥↓繝｡繝ｳ繝�リ繝ｳ繧ｹ�育｣ｨ縺丈ｽ懈･ｭ�峨＠縺ｦ縺�ｋ1.5蛟埼溘�譏�蜒上�",
+        speech: "莉雁屓縺ｮ蜴滉ｾ｡縺ｯ" + fCost + "縺ｧ縺吶′縲�100蝮��豸医＠繧ｴ繝�繧ｯ繝ｪ繝ｼ繝翫�縺ｧ縺ｻ繧薙�1蛻�｣ｨ縺�※縺九ｉ蜃ｺ蜩√＠縺溘％縺ｨ縺ｧ縲∫嶌蝣ｴ繧医ｊ邏�3,000蜀�ｫ倥￥螢ｲ繧九％縺ｨ縺ｫ謌仙粥縺励∪縺励◆縲�"
+      },
+      {
+        title: "縺ｾ縺ｨ繧√→CTA",
+        time: "32縲�45遘�",
+        visual: "縺�＞縺ｭ縺ｨ繝悶ャ繧ｯ繝槭�繧ｯ�井ｿ晏ｭ倥�繧ｿ繝ｳ�峨ｒ謖�＠遉ｺ縺吶�繝��繧｢繝��繧､繝ｩ繧ｹ繝医�\n雉ｪ蝠上ｒ菫�☆繧ｳ繝｡繝ｳ繝医ユ繝ｭ繝��縲�",
+        speech: "蠕後°繧我ｻ募�繧悟ｺ苓�縺ｧ隕玖ｿ斐○繧九ｈ縺�↓縲∽ｻ翫�縺�■縺ｫ縺薙�蜍慕判繧剃ｿ晏ｭ倥＠縺ｦ縺翫＞縺ｦ縺上□縺輔＞縺ｭ縲りｩｳ縺励＞雉ｪ蝠上�繧ｳ繝｡繝ｳ繝域ｬ�〒蜿嶺ｻ倅ｸｭ縺ｧ縺呻ｼ�"
+      }
+    ],
+    story: [
+      {
+        title: "繧ｪ繝ｼ繝励ル繝ｳ繧ｰ",
+        time: "0縲�6遘�",
+        visual: "蟆代＠證励ａ縺ｮ螳､蜀�ゅせ繝槭�縺ｮ逕ｻ髱｢繧堤惻繧√↑縺後ｉ縺溘ａ諱ｯ繧偵▽縺乗丐蜒上�\n遯∫┯繝｡繝ｫ繧ｫ繝ｪ縺ｮ螢ｲ荳企夂衍髻ｳ縺後後メ繝｣繝ｪ繝ｼ繝ｳ�√阪→魑ｴ繧翫∬｡ｨ諠�′繝代ャ縺ｨ譏弱ｋ縺上↑繧区ｼ泌�縲�",
+        speech: "蜑ｯ讌ｭ繧定ｫｦ繧√°縺代※縺�◆蟷ｳ蜃｡縺ｪ莨夂､ｾ蜩｡縺後∽ｻ穂ｺ句ｸｰ繧翫�繧上★縺�1譎る俣縺ｧ譌･邨ｦ" + fProfit + "繧堤ｨｼ縺主�縺励◆繝ｪ繧｢繝ｫ縺ｪ荳譌･縲�"
+      },
+      {
+        title: "驕主悉縺ｮ闍ｦ謔ｩ",
+        time: "6縲�20遘�",
+        visual: "鬧��繝帙�繝�繧偵≧縺､繧縺�※豁ｩ縺丞ｧｿ縲ゅΜ繧ｵ繧､繧ｯ繝ｫ繧ｷ繝ｧ繝��縺ｮ譽壹�蜑阪ｒ縺�ｍ縺�ｍ縺励※菴輔ｂ雋ｷ縺医★縺ｫ蟶ｰ繧矩℃蜴ｻ縺ｮ讒伜ｭ舌�\n逋ｽ鮟偵�蝗樊Φ鬚ｨ繧ｨ繝輔ぉ繧ｯ繝医�",
+        speech: "謇句叙繧�18荳�よｯ取律驕�￥縺ｾ縺ｧ蜒阪＞縺ｦ繧りｲｯ驥代�蠅励∴縺壹∫┬縺｣縺ｦ迚ｩ雋ｩ繧貞ｧ九ａ縺ｾ縺励◆縺後∵怙蛻昴�縺ｩ繧後ｒ隕九※繧りｵ､蟄励↓隕九∴縺ｦ縲∽ｻ募�繧後′縺ｧ縺阪★謖ｫ謚伜ｯｸ蜑阪〒縺励◆縲�"
+      },
+      {
+        title: "繝悶Ξ繧､繧ｯ繧ｹ繝ｫ繝ｼ",
+        time: "20縲�40遘�",
+        visual: "縺雁ｺ励�譽壹�螂･縺九ｉ莉雁屓縺ｮ蝠�刀��" + productName + "�峨ｒ螳晉黄縺ｮ繧医≧縺ｫ隕九▽縺大�縺呎丐蜒擾ｼ医き繝ｩ繝ｼ縺ｫ謌ｻ繧具ｼ峨�\n莉募�繧梧凾縺ｮ蜴滉ｾ｡繝ｬ繧ｷ繝ｼ繝茨ｼ�" + fCost + "�峨′繝昴ャ繝励い繝��縲ょ�蜩∫峩蠕後↓螢ｲ繧後◆螻･豁ｴ逕ｻ髱｢縺ｮ陦ｨ遉ｺ縲�",
+        speech: "縺ｧ繧ゅ√Μ繧ｵ繝ｼ繝√�閠�∴譁ｹ繧貞､峨∴縺ｦ隕九▽縺代◆縺ｮ縺後％縺ｮ" + productName + "縲ゆｻ募�繧悟次萓｡" + fCost + "縺後∝�蜩∝ｾ後ｏ縺壹°2譎る俣縺ｧ" + fSell + "縺ｧ螢ｲ繧後∵焔蜈�↓" + fProfit + "谿九▲縺溘→縺阪∵悽蠖薙↓髴�∴縺ｾ縺励◆縲�"
+      },
+      {
+        title: "譛ｪ譚･縺ｸ縺ｮ蜻ｼ縺ｳ縺九￠",
+        time: "40縲�55遘�",
+        visual: "繝代た繧ｳ繝ｳ縺ｫ蜷代°縺｣縺ｦ蜑榊髄縺阪↓菴懈･ｭ縺励※縺�ｋ閭御ｸｭ縺ｮ譏�蜒上�\n逕ｻ髱｢荳九↓縲後さ繝｡繝ｳ繝域ｬ�↓縲主憶讌ｭ縲上→蜈･蜉帙阪→繧｢繝九Γ繝ｼ繧ｷ繝ｧ繝ｳ譁�ｭ励ｒ陦ｨ遉ｺ縲�",
+        speech: "豁｣縺励＞遏･隴倥＆縺郁ｺｫ縺ｫ縺､縺代ｌ縺ｰ縲∽ｺｺ逕溘�閾ｪ蛻��謇九〒螟峨∴繧峨ｌ縺ｾ縺吶ょヵ縺悟�蠢��°繧画怦10荳�ｨｼ縺�□繧ｹ繝�ャ繝励�縲√さ繝｡繝ｳ繝域ｬ�↓縲主憶讌ｭ縲上→譖ｸ縺�※縺上ｌ縺滓婿縺ｫ蛟句挨縺ｫ蜈ｱ譛峨＠縺ｾ縺呻ｼ�"
+      }
+    ]
+  };
+}
+
+// Google Gemini API�医�繝ｫ繝√Δ繝ｼ繝繝ｫ繝｢繝�Ν�峨�蜻ｼ縺ｳ蜃ｺ縺�
+async function fetchFromGeminiAPI(apiKey, base64ImageA, base64ImageB) {
+  const getCleanBase64 = (dataUrl) => dataUrl.split(',')[1];
+  const getMime = (dataUrl) => {
+    const match = dataUrl.match(/data:(.*?);base64/);
+    return match ? match[1] : 'image/jpeg';
+  };
+
+  const partA = {
+    inlineData: {
+      data: getCleanBase64(base64ImageA),
+      mimeType: getMime(base64ImageA)
+    }
+  };
+
+  const partB = {
+    inlineData: {
+      data: getCleanBase64(base64ImageB),
+      mimeType: getMime(base64ImageB)
+    }
+  };
+
+  const promptText = `
+縺ゅ↑縺溘�縺帙←繧奇ｼ育黄雋ｩ�峨�繝励Ο蜍慕判繧ｯ繝ｪ繧ｨ繧､繧ｿ繝ｼ蜈ｼAI隗｣譫舌い繧ｷ繧ｹ繧ｿ繝ｳ繝医〒縺吶�
+繧｢繝��繝ｭ繝ｼ繝峨＆繧後◆2譫壹�逕ｻ蜒上ョ繝ｼ繧ｿ繧定ｩｳ邏ｰ縺ｫ蛻�梵縺励√す繝ｧ繝ｼ繝亥虚逕ｻ逕ｨ縺ｮ蜿ｰ譛ｬ繧剃ｽ懈�縺励※縺上□縺輔＞縲�
+
+- 1譫夂岼縺ｮ逕ｻ蜒擾ｼ�mage A�峨�縲√Γ繝ｫ繧ｫ繝ｪ縺ｪ縺ｩ縺ｮ雋ｩ螢ｲ螳御ｺ�判髱｢縺ｮ繧ｹ繧ｯ繝ｪ繝ｼ繝ｳ繧ｷ繝ｧ繝�ヨ縺ｧ縺吶ゅ％縺薙°繧牙膚蜩∝錐縲∬ｲｩ螢ｲ萓｡譬ｼ�亥｣ｲ荳奇ｼ峨√♀繧医�蜿ｯ閭ｽ縺ｧ縺ゅｌ縺ｰ騾∵侭繧�焔謨ｰ譁吶ｒ隱ｭ縺ｿ蜿悶▲縺ｦ縺上□縺輔＞縲�
+- 2譫夂岼縺ｮ逕ｻ蜒擾ｼ�mage B�峨�縲∽ｻ募�繧碁≡鬘阪ｒ遉ｺ縺吶Ξ繧ｷ繝ｼ繝医��伜庶譖ｸ縲∬ｫ区ｱよ嶌縲√≠繧九＞縺ｯ謇区嶌縺阪Γ繝｢縺ｮ逕ｻ蜒上〒縺吶ゅ％縺薙°繧牙膚蜩√�莉募�繧悟次萓｡繧定ｪｭ縺ｿ蜿悶▲縺ｦ縺上□縺輔＞縲�
+
+縲占ｨ育ｮ励♀繧医�諠��ｱ縺ｮ繝ｫ繝ｼ繝ｫ (蜴ｳ螳�)縲�
+1. 逕ｻ蜒上↓逶ｴ謗･繝�く繧ｹ繝医ｄ謨ｰ蛟､縺ｨ縺励※險倩ｼ峨＆繧後※縺�↑縺�ュ蝣ｱ�磯∵侭縲∬ｲｩ螢ｲ謇区焚譁吶↑縺ｩ�峨ｒ蜍晄焔縺ｫ謗ｨ貂ｬ縺励◆繧願ｨ育ｮ励↓蜷ｫ繧√◆繧翫＠縺ｦ縺ｯ縺�￠縺ｾ縺帙ｓ縲ゅ◆縺�縺励∫判蜒丞�縺ｫ縲碁∵侭縲阪ｄ縲梧焔謨ｰ譁吶阪�驥鷹｡阪′繝�く繧ｹ繝医→縺励※譏手ｨ倥＆繧後※縺�ｋ蝣ｴ蜷茨ｼ井ｾ具ｼ夊｡ｨ縺ｮ荳ｭ縺ｫ縲碁∵侭�堋･750縲阪↑縺ｩ縺ｮ險倩ｼ峨′縺ゅｋ蝣ｴ蜷茨ｼ峨�縲√◎縺ｮ蛟､繧呈ｭ｣遒ｺ縺ｫ隱ｭ縺ｿ蜿悶▲縺ｦ JSON 縺ｮ shipping, fee 縺ｫ譬ｼ邏阪＠縺ｦ縺上□縺輔＞縲ら判蜒丞�縺ｫ譏手ｨ倥＆繧後※縺�↑縺��ｴ蜷医�縲《hipping 縺ｨ fee 縺ｯ 0 縺ｨ縺励∪縺吶�
+2. 蛻ｩ逶翫�縲√瑚ｲｩ螢ｲ萓｡譬ｼ �� 莉募�繧御ｾ｡譬ｼ �� 騾∵侭�育判蜒上↓險倩ｼ峨′縺ゅｋ蝣ｴ蜷茨ｼ� �� 謇区焚譁呻ｼ育判蜒上↓險倩ｼ峨′縺ゅｋ蝣ｴ蜷茨ｼ峨阪→縺励※險育ｮ励＠縺ｾ縺吶�
+3. 蛻ｩ逶顔紫 �� 蛻ｩ逶� ﾃｷ 雋ｩ螢ｲ萓｡譬ｼ ﾃ� 100 (%) 繧定ｨ育ｮ励＠縺ｾ縺吶�
+4. 逕ｻ蜒上°繧牙膚蜩∝錐縺御ｸ肴�縺ｪ蝣ｴ蜷医�蜍晄焔縺ｫ謐城�縺帙★縲√御ｻ募�繧後◆蝠�刀縲阪ｄ縲後％縺ｮ蝠�刀縲阪→縺�≧繝励Ξ繝ｼ繝ｳ縺ｧ豁｣遒ｺ縺ｪ陦ｨ迴ｾ繧剃ｽｿ逕ｨ縺励※縺上□縺輔＞縲�
+
+縲仙虚逕ｻ邱ｨ髮��迚ｹ蠕ｴ縲�
+譏�蜒上�繧ｹ繝槭�繝医ヵ繧ｩ繝ｳ逕ｻ髱｢縺ｮ繧ｹ繧ｯ繝ｪ繝ｼ繝ｳ繧ｷ繝ｧ繝�ヨ�医Γ繝ｫ繧ｫ繝ｪ蜿門ｼ慕判髱｢縲∽ｻ募�繧後Γ繝｢縲√け繝ｬ繧ｸ繝�ヨ繧ｫ繝ｼ繝画�邏ｰ縲√Ζ繝槭ヨ繧�Ψ萓ｿ螻縺ｮ逋ｺ騾√し繧､繧ｺ螳夊ｦ上↑縺ｩ�峨�繧ｹ繝ｩ繧､繝峨す繝ｧ繝ｼ縺ｮ縺ｿ縺ｧ讒区�縺輔ｌ縺ｾ縺吶ょｮ溷�縺ｮ謦ｮ蠖ｱ謖�､ｺ縺ｯ荳蛻�性繧√↑縺�〒縺上□縺輔＞縲�
+縺昴�縺溘ａ縲∝推繧ｷ繝ｼ繝ｳ縺ｮ縲先丐蜒乗ｼ泌�繝ｻ繝�Ο繝��謖�､ｺ��isual�峨代↓縺ｯ縲√後←縺ｮ繧ｹ繧ｯ繝ｪ繝ｼ繝ｳ繧ｷ繝ｧ繝�ヨ逕ｻ蜒上ｒ陦ｨ遉ｺ縺励√←縺ｮ繧医≧縺ｪ邁｡貎斐↑繝�Ο繝��譁�ｭ励ｒ驥阪�繧九°縲阪�縺ｿ繧呈欠螳壹＠縺ｦ縺上□縺輔＞縲�
+
+縲舌リ繝ｬ繝ｼ繧ｷ繝ｧ繝ｳ繝ｻ蜿ｰ譛ｬ縺ｮ迚ｹ蠕ｴ縲�
+縺帙←繧翫ｒ繧�▲縺ｦ縺�ｋ莠ｺ�育黄雋ｩ繝励Ξ繧､繝､繝ｼ�峨′縲後≠繧九≠繧具ｼ√阪→豺ｱ縺丞�諢溘�邏榊ｾ励〒縺阪ｋ蠢�炊謠丞�繧剃ｺ､縺医√ユ繝ｳ繝昴ｈ縺乗･ｵ繧√※邁｡貎費ｼ�1繧ｷ繝ｼ繝ｳ縺ｫ縺､縺�15縲�30譁�ｭ礼ｨ句ｺｦ縺ｮ髱槫ｸｸ縺ｫ遏ｭ縺�そ繝ｪ繝包ｼ峨↓譖ｸ縺�※縺上□縺輔＞縲ょ燕鄂ｮ縺阪ｄ縲後％繧薙↓縺｡縺ｯ縲阪↑縺ｩ縺ｮ辟｡鬧�↑謖ｨ諡ｶ縺ｯ螳悟�縺ｫ逵∫払縺励※縺上□縺輔＞縲�
+
+縲仙�蜉帙ヵ繧ｩ繝ｼ繝槭ャ繝医�
+莉･荳九�JSON讒矩�縺ｮ縺ｿ繧定ｿ斐＠縺ｦ縺上□縺輔＞縲ゆｽ呵ｨ医↑繝槭�繧ｯ繝繧ｦ繝ｳ縺ｮ \`\`\`json 繝ｩ繝�ヱ繝ｼ繧�燕蠕後�隱ｬ譏弱ユ繧ｭ繧ｹ繝医�荳蛻�性繧√↑縺�〒縺上□縺輔＞縲�
+
+{
+  "productName": "隱ｭ縺ｿ蜿悶▲縺溷膚蜩∝錐",
+  "sellPrice": 雋ｩ螢ｲ萓｡譬ｼ(謨ｰ蛟､),
+  "purchasePrice": 莉募�繧御ｾ｡譬ｼ(謨ｰ蛟､),
+  "shipping": 逕ｻ蜒上°繧芽ｪｭ縺ｿ蜿悶▲縺滄∵侭 (險倩ｼ峨′縺ｪ縺代ｌ縺ｰ 0),
+  "feeRate": 逕ｻ蜒上°繧芽ｪｭ縺ｿ蜿悶▲縺滓焔謨ｰ譁咏紫 (險倩ｼ峨′縺ｪ縺代ｌ縺ｰ 0),
+  "fee": 逕ｻ蜒上°繧芽ｪｭ縺ｿ蜿悶▲縺滓焔謨ｰ譁咎｡� (險倩ｼ峨′縺ｪ縺代ｌ縺ｰ 0),
+  "profit": 蛻ｩ逶�(雋ｩ螢ｲ萓｡譬ｼ - 莉募�繧御ｾ｡譬ｼ - 騾∵侭 - 謇区焚譁吶�謨ｰ蛟､),
+  "profitRate": 蛻ｩ逶顔紫(謨ｰ蛟､縲∝屁謐ｨ莠泌�縺励◆謨ｴ謨ｰ),
+  "scripts": {
+    "buzz": [
+      {
+        "title": "繧ｷ繝ｼ繝ｳ蜷�",
+        "time": "譎る俣(萓�: 0縲�3遘�)",
+        "visual": "陦ｨ遉ｺ縺吶ｋ繧ｹ繧ｯ繧ｷ繝ｧ縺ｨ驥阪�繧九ユ繝ｭ繝��縺ｮ謖�､ｺ",
+        "speech": "邁｡貎斐↑繧ｻ繝ｪ繝包ｼ�15縲�30譁�ｭ礼ｨ句ｺｦ��"
+      }
+    ],
+    "educational": [
+      {
+        "title": "繧ｷ繝ｼ繝ｳ蜷�",
+        "time": "譎る俣",
+        "visual": "陦ｨ遉ｺ縺吶ｋ繧ｹ繧ｯ繧ｷ繝ｧ縺ｨ驥阪�繧九ユ繝ｭ繝��縺ｮ謖�､ｺ",
+        "speech": "邁｡貎斐↑繧ｻ繝ｪ繝包ｼ�15縲�30譁�ｭ礼ｨ句ｺｦ��"
+      }
+    ],
+    "story": [
+      {
+        "title": "繧ｷ繝ｼ繝ｳ蜷�",
+        "time": "譎る俣",
+        "visual": "陦ｨ遉ｺ縺吶ｋ繧ｹ繧ｯ繧ｷ繝ｧ縺ｨ驥阪�繧九ユ繝ｭ繝��縺ｮ謖�､ｺ",
+        "speech": "邁｡貎斐↑繧ｻ繝ｪ繝包ｼ�15縲�30譁�ｭ礼ｨ句ｺｦ��"
+      }
+    ]
+  }
+}
+
+蜷�せ繧ｯ繝ｪ繝励ヨ繧ｹ繧ｿ繧､繝ｫ縺ｯ縺昴ｌ縺槭ｌ4蛟九�遏ｭ縺�す繝ｼ繝ｳ縺ｧ讒区�縺励※縺上□縺輔＞縲ゅ∪縺溘√☆縺ｹ縺ｦ縺ｮ繧ｹ繧ｯ繝ｪ繝励ヨ繧ｹ繧ｿ繧､繝ｫ縺ｫ縺翫＞縺ｦ縲�4逡ｪ逶ｮ�域怙蠕鯉ｼ峨�繧ｷ繝ｼ繝ｳ縺ｮ繧ｻ繝ｪ繝包ｼ�peech�峨�譛ｫ蟆ｾ縺ｫ縺ｯ縲∝ｿ�★隕冶�閠�↓繝√Ε繝ｳ繝阪Ν逋ｻ骭ｲ縺翫ｈ縺ｳ鬮倩ｩ穂ｾ｡繧剃ｿ�☆繝輔Ξ繝ｼ繧ｺ�井ｾ具ｼ壹後メ繝｣繝ｳ繝阪Ν逋ｻ骭ｲ繝ｻ鬮倩ｩ穂ｾ｡繧ゅｈ繧阪＠縺擾ｼ√阪ｄ縲後メ繝｣繝ｳ繝阪Ν逋ｻ骭ｲ縺ｨ鬮倩ｩ穂ｾ｡繧ょｿ倥ｌ縺壹↓�√阪↑縺ｩ�峨ｒ蠢�★蜷ｫ繧√※縺上□縺輔＞縲�
+`;
+
+  const requestBody = {
+    contents: [
+      {
+        parts: [
+          { text: promptText },
+          partA,
+          partB
+        ]
+      }
+    ],
+    generationConfig: {
+      responseMimeType: "application/json"
+    }
+  };
+
+  const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash:generateContent?key=${apiKey}`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify(requestBody)
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`Gemini API returned status ${response.status}: ${errorText}`);
+  }
+
+  const jsonResult = await response.json();
+  const rawText = jsonResult.candidates[0].content.parts[0].text;
+  return JSON.parse(rawText);
+}
+
+// 蜿ｰ譛ｬ邨先棡繧ｫ繝ｼ繝峨�陦ｨ遉ｺ
+function displayScriptOutput(data) {
+  currentAnalysisData = data;
+  const summaryArea = safeGetElement('script-analysis-summary');
+  const outputCard = safeGetElement('script-output-card');
+  const alertEl = safeGetElement('success-alert');
+
+  if (outputCard) outputCard.classList.remove('hidden');
+  if (alertEl) alertEl.style.display = 'flex';
+
+  if (summaryArea) {
+    const profitClass = data.profit >= 0 ? 'profit-positive' : 'profit-negative';
+    summaryArea.innerHTML = `
+      <div class="analysis-badge">
+        <span class="badge-label"><i class="fa-solid fa-tag"></i> 蛻､螳壼膚蜩∝錐</span>
+        <span class="badge-value" style="font-size: 0.95rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="${data.productName}">${data.productName}</span>
+      </div>
+      <div class="analysis-badge">
+        <span class="badge-label"><i class="fa-solid fa-basket-shopping"></i> 雋ｩ螢ｲ萓｡譬ｼ</span>
+        <span class="badge-value">${formatCurrency(data.sellPrice)}</span>
+      </div>
+      <div class="analysis-badge">
+        <span class="badge-label"><i class="fa-solid fa-yen-sign"></i> 莉募�繧御ｾ｡譬ｼ</span>
+        <span class="badge-value">${formatCurrency(data.purchasePrice)}</span>
+      </div>
+      ${(data.shipping > 0 || data.fee > 0) ? `
+      <div class="analysis-badge">
+        <span class="badge-label"><i class="fa-solid fa-truck-fast"></i> 騾∵侭繝ｻ謇区焚譁�</span>
+        <span class="badge-value" style="font-size: 0.95rem; font-weight: 600; color: var(--text-main);">
+          ${formatCurrency(data.shipping)} + ${formatCurrency(data.fee)}
+        </span>
+      </div>
+      ` : ''}
+      <div class="analysis-badge">
+        <span class="badge-label"><i class="fa-solid fa-hand-holding-dollar"></i> ${(data.shipping > 0 || data.fee > 0) ? '謇区ｮ九ｊ蛻ｩ逶�' : '蛻ｩ逶企｡�'} (蛻ｩ逶顔紫)</span>
+        <span class="badge-value ${profitClass}">
+          ${formatCurrency(data.profit)} <span style="font-size: 0.85rem; font-weight: bold; color: inherit;">(${data.profitRate}%)</span>
+        </span>
+      </div>
+    `;
+  }
+
+  // 繝�ヵ繧ｩ繝ｫ繝医〒縲後う繝ｳ繝代け繝磯㍾隕�(buzz)縲阪ｒ繝ｬ繝ｳ繝繝ｪ繝ｳ繧ｰ縺吶ｋ
+  const activeTab = document.querySelector('.script-tab-btn.active');
+  const style = activeTab ? activeTab.getAttribute('data-style') : 'buzz';
+  renderScriptViewer(data.scripts[style]);
+}
+
+// 蜿ｰ譛ｬ繧ｷ繝ｼ繝ｳ繝ｪ繧ｹ繝医�HTML蜃ｺ蜉�
+function renderScriptViewer(scenes) {
+  const viewer = safeGetElement('script-content-viewer');
+  if (!viewer) return;
+
+  // 蜀咲函荳ｭ髻ｳ螢ｰ繧貞ｼｷ蛻ｶ蛛懈ｭ｢
+  if (window.speechSynthesis) {
+    window.speechSynthesis.cancel();
+  }
+  currentPlayButton = null;
+
+  let html = `<div class="scene-list">`;
+  
+  scenes.forEach((scene, index) => {
+    html += `
+      <div class="scene-card">
+        <div class="scene-header">
+          <span><i class="fa-solid fa-film"></i> 繧ｷ繝ｼ繝ｳ ${index + 1}: ${scene.title}</span>
+          <span class="scene-time-badge"><i class="fa-regular fa-clock"></i> ${scene.time}</span>
+        </div>
+        <div class="scene-body">
+          <div class="scene-col scene-col-left">
+            <div class="col-title"><i class="fa-solid fa-camera"></i> 譏�蜒乗ｼ泌�繝ｻ繝�Ο繝��謖�､ｺ</div>
+            <div class="col-content">${scene.visual.replace(/\n/g, '<br>')}</div>
+          </div>
+          <div class="scene-col scene-col-right">
+            <div class="col-title"><i class="fa-solid fa-microphone"></i> 繝翫Ξ繝ｼ繧ｷ繝ｧ繝ｳ蜴溽ｨｿ</div>
+            <div class="speech-text-wrapper">
+              <div class="col-content speech-content" id="speech-text-${index}">${scene.speech}</div>
+              <div style="display: flex; gap: 0.1rem;">
+                <button type="button" class="btn-scene-action btn-voice-play" data-index="${index}" title="繧ｻ繝ｪ繝輔�髻ｳ螢ｰ繧貞�逕溘☆繧�">
+                  <i class="fa-solid fa-volume-high"></i>
+                </button>
+                <button type="button" class="btn-scene-action btn-copy-scene" data-index="${index}" title="繧ｻ繝ｪ繝輔ｒ繧ｳ繝斐�縺吶ｋ">
+                  <i class="fa-regular fa-copy"></i>
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    `;
+  });
+
+  html += `</div>`;
+  viewer.innerHTML = html;
+
+  // 蜷�す繝ｼ繝ｳ縺ｮ繧､繝吶Φ繝亥牡繧雁ｽ薙※
+  viewer.querySelectorAll('.btn-voice-play').forEach(btn => {
+    btn.onclick = (e) => {
+      const idx = parseInt(e.currentTarget.getAttribute('data-index'), 10);
+      handleSpeechSynthesisToggle(idx, scenes[idx].speech, e.currentTarget);
+    };
+  });
+
+  viewer.querySelectorAll('.btn-copy-scene').forEach(btn => {
+    btn.onclick = (e) => {
+      const idx = parseInt(e.currentTarget.getAttribute('data-index'), 10);
+      navigator.clipboard.writeText(scenes[idx].speech).then(() => {
+        alert(`繧ｷ繝ｼ繝ｳ ${idx + 1} 縺ｮ繧ｻ繝ｪ繝輔ｒ繧ｳ繝斐�縺励∪縺励◆縲Ａ);
+      });
+    };
+  });
+}
+
+// 髻ｳ螢ｰ蜀咲函蛻�ｊ譖ｿ縺�
+function handleSpeechSynthesisToggle(idx, text, button) {
+  if (!window.speechSynthesis) {
+    alert('縺贋ｽｿ縺��繝悶Λ繧ｦ繧ｶ縺ｯ髻ｳ螢ｰ蜷域�縺ｫ蟇ｾ蠢懊＠縺ｦ縺�∪縺帙ｓ縲�');
+    return;
+  }
+
+  // 譌｢縺ｫ蜀咲函荳ｭ縺ｮ蝣ｴ蜷�
+  if (window.speechSynthesis.speaking) {
+    window.speechSynthesis.cancel();
+    
+    // 蜷後§繝懊ち繝ｳ繧呈款縺励◆縺ｪ繧牙●豁｢縺ｮ縺ｿ
+    if (currentPlayButton === button) {
+      setVoiceButtonPlayingState(button, false);
+      currentPlayButton = null;
+      return;
+    }
+    
+    // 蛻･縺ｮ繝懊ち繝ｳ縺ｪ繧峨∝燕縺ｮ繝懊ち繝ｳ縺ｮ迥ｶ諷九ｒ蜈�↓謌ｻ縺�
+    if (currentPlayButton) {
+      setVoiceButtonPlayingState(currentPlayButton, false);
+    }
+  }
+
+  currentPlayButton = button;
+  setVoiceButtonPlayingState(button, true);
+
+  currentUtterance = new SpeechSynthesisUtterance(text);
+  currentUtterance.lang = 'ja-JP';
+
+  // 譌･譛ｬ隱櫁ｩｱ閠��繧ｻ繝�ヨ
+  const voices = window.speechSynthesis.getVoices();
+  const jaVoice = voices.find(v => v.lang.startsWith('ja'));
+  if (jaVoice) {
+    currentUtterance.voice = jaVoice;
+  }
+
+  currentUtterance.rate = 1.05; // 繧上★縺九↓繝�Φ繝昴い繝��
+
+  currentUtterance.onend = () => {
+    setVoiceButtonPlayingState(button, false);
+    if (currentPlayButton === button) currentPlayButton = null;
+  };
+
+  currentUtterance.onerror = () => {
+    setVoiceButtonPlayingState(button, false);
+    if (currentPlayButton === button) currentPlayButton = null;
+  };
+
+  window.speechSynthesis.speak(currentUtterance);
+}
+
+function setVoiceButtonPlayingState(button, isPlaying) {
+  const icon = button.querySelector('i');
+  if (isPlaying) {
+    button.classList.add('playing');
+    button.title = '蜀咲函繧貞●豁｢';
+    if (icon) icon.className = 'fa-solid fa-square';
+  } else {
+    button.classList.remove('playing');
+    button.title = '繧ｻ繝ｪ繝輔�髻ｳ螢ｰ繧貞�逕溘☆繧�';
+    if (icon) icon.className = 'fa-solid fa-volume-high';
+  }
+}
+
+// 蜈ｨ蜿ｰ譛ｬ縺ｮ荳諡ｬ繧ｳ繝斐�
+function copyEntireScript(scenes, styleKey) {
+  let styleTitle = "繧､繝ｳ繝代け繝磯㍾隕� (繝舌ぜ繧顔ｳｻ)";
+  if (styleKey === 'educational') styleTitle = "隗｣隱ｬ繝ｻ繝弱え繝上え驥崎ｦ�";
+  if (styleKey === 'story') styleTitle = "繧ｹ繝医�繝ｪ繝ｼ鬚ｨ (螳滄鹸)";
+
+  let text = `縲舌○縺ｩ繧翫す繝ｧ繝ｼ繝亥虚逕ｻ蜿ｰ譛ｬ縲曾n`;
+  text += `讒区�繧ｹ繧ｿ繧､繝ｫ: ${styleTitle}\n`;
+  text += `蛻､螳壼膚蜩�: ${currentAnalysisData.productName}\n`;
+  text += `謇区ｮ九ｊ邊怜茜: ${formatCurrency(currentAnalysisData.profit)} (蛻ｩ逶顔紫: ${currentAnalysisData.profitRate}%)\n`;
+  text += `-------------------------------------------\n\n`;
+
+  scenes.forEach((scene, index) => {
+    text += `笆� 繧ｷ繝ｼ繝ｳ ${index + 1}: ${scene.title} (${scene.time})\n`;
+    text += `縲先丐蜒乗ｼ泌�繝ｻ繝�Ο繝��謖�､ｺ縲曾n${scene.visual}\n`;
+    text += `縲舌リ繝ｬ繝ｼ繧ｷ繝ｧ繝ｳ蜴溽ｨｿ縲曾n${scene.speech}\n\n`;
+  });
+
+  navigator.clipboard.writeText(text).then(() => {
+    alert('蜿ｰ譛ｬ蜈ｨ菴薙�蜴溽ｨｿ�域丐蜒乗ｼ泌��九リ繝ｬ繝ｼ繧ｷ繝ｧ繝ｳ�峨ｒ繧ｯ繝ｪ繝��繝懊�繝峨↓繧ｳ繝斐�縺励∪縺励◆��');
+  }).catch(err => {
+    alert('繧ｳ繝斐�縺ｫ螟ｱ謨励＠縺ｾ縺励◆: ' + err.message);
+  });
+}
+
+// ==========================================
+// 6. 蜍慕判閾ｪ蜍慕函謌舌�騾｣謳ｺ讖溯� 繧ｳ繧｢繝ｭ繧ｸ繝�け (霑ｽ蜉�)
+// ==========================================
+
+let videoPreloadedImages = null;
+let videoIsPlaying = false;
+let videoPlaybackTime = 0; // 迴ｾ蝨ｨ縺ｮ蜀咲函菴咲ｽｮ�育ｧ抵ｼ�
+const videoTotalDuration = 32; // 4繧ｷ繝ｼ繝ｳ x 蜷�8遘� = 32遘貞崋螳�
+let videoAnimationId = null;
+
+// Web Audio API 髢｢騾｣
+let videoAudioContext = null;
+let videoAudioDestination = null;
+let videoBgmInterval = null;
+
+// MediaRecorder 髢｢騾｣
+let videoRecorder = null;
+let videoRecordedChunks = [];
+let videoIsExporting = false;
+
+// 螟夜Κ蜍慕判邱ｨ髮�い繝励Μ騾｣謳ｺ逕ｨ繧､繝吶Φ繝医�逋ｻ骭ｲ
+function setupVideoGeneratorListeners() {
+  const btnOpen = safeGetElement('btn-open-video-generator');
+  const btnClose = safeGetElement('btn-close-video-modal');
+  const overlay = safeGetElement('video-modal-overlay');
+  
+  const btnPlay = safeGetElement('btn-video-play');
+  const btnExport = safeGetElement('btn-video-export');
+  const btnDownloadSrt = safeGetElement('btn-download-srt');
+  const btnDownloadJson = safeGetElement('btn-download-json');
+  const canvasOverlay = safeGetElement('canvas-play-overlay');
+
+  if (!btnOpen || !overlay) return;
+
+  // 繝｢繝ｼ繝繝ｫ繧帝幕縺�
+  btnOpen.addEventListener('click', async () => {
+    if (!uploadedImageDataA || !uploadedImageDataB) {
+      alert('蜍慕判繧堤函謌舌☆繧九↓縺ｯ縲∝ｮ溽ｸｾ逕ｻ蜒上→莉募�繧悟次萓｡逕ｻ蜒上�荳｡譁ｹ繧偵い繝��繝ｭ繝ｼ繝峨＠縺ｦ縺上□縺輔＞縲�');
+      return;
+    }
+    
+    overlay.classList.remove('hidden');
+    
+    // 逕ｻ蜒上�繝励Μ繝ｭ繝ｼ繝�
+    try {
+      showCanvasLoading(true);
+      videoPreloadedImages = await preloadVideoImages();
+      showCanvasLoading(false);
+      resetVideoState();
+      drawStaticPreview();
+    } catch (err) {
+      console.error(err);
+      alert('逕ｻ蜒上�隱ｭ縺ｿ霎ｼ縺ｿ縺ｫ螟ｱ謨励＠縺ｾ縺励◆縲�');
+      showCanvasLoading(false);
+    }
+  });
+
+  // 繝｢繝ｼ繝繝ｫ繧帝哩縺倥ｋ
+  if (btnClose) {
+    btnClose.addEventListener('click', () => {
+      stopVideoPreview();
+      overlay.classList.add('hidden');
+    });
+  }
+
+  // 蜀咲函繝懊ち繝ｳ
+  if (btnPlay) {
+    btnPlay.addEventListener('click', () => {
+      // 繝ｦ繝ｼ繧ｶ繝ｼ繧ｸ繧ｧ繧ｹ繝√Ε繝ｼ縺ｮ逶ｴ荳九〒蜷梧悄逧�↓AudioContext繧貞�譛溷喧/蜀埼幕縺励※繧ｹ繝槭�蟇ｾ遲悶ｒ陦後≧
+      if (!videoAudioContext) {
+        const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+        if (AudioContextClass) {
+          videoAudioContext = new AudioContextClass();
+        }
+      }
+      if (videoAudioContext && videoAudioContext.state === 'suspended') {
+        videoAudioContext.resume();
+      }
+
+      if (videoIsPlaying) {
+        pauseVideoPreview();
+      } else {
+        startVideoPreview();
+      }
+    });
+  }
+
+  // 繧ｭ繝｣繝ｳ繝舌せ繧ｪ繝ｼ繝舌�繝ｬ繧､縺ｮ繧ｯ繝ｪ繝�け縺ｧ蜀咲函
+  if (canvasOverlay) {
+    canvasOverlay.addEventListener('click', () => {
+      // 繝ｦ繝ｼ繧ｶ繝ｼ繧ｸ繧ｧ繧ｹ繝√Ε繝ｼ縺ｮ逶ｴ荳九〒蜷梧悄逧�↓AudioContext繧貞�譛溷喧/蜀埼幕縺励※繧ｹ繝槭�蟇ｾ遲悶ｒ陦後≧
+      if (!videoAudioContext) {
+        const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+        if (AudioContextClass) {
+          videoAudioContext = new AudioContextClass();
+        }
+      }
+      if (videoAudioContext && videoAudioContext.state === 'suspended') {
+        videoAudioContext.resume();
+      }
+      startVideoPreview();
+    });
+  }
+
+  // 蜍慕判繧ｨ繧ｯ繧ｹ繝昴�繝�
+  if (btnExport) {
+    btnExport.addEventListener('click', () => {
+      // 繝ｦ繝ｼ繧ｶ繝ｼ繧ｸ繧ｧ繧ｹ繝√Ε繝ｼ縺ｮ逶ｴ荳九〒蜷梧悄逧�↓AudioContext繧貞�譛溷喧/蜀埼幕縺励※繧ｹ繝槭�蟇ｾ遲悶ｒ陦後≧
+      if (!videoAudioContext) {
+        const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+        if (AudioContextClass) {
+          videoAudioContext = new AudioContextClass();
+        }
+      }
+      if (videoAudioContext && videoAudioContext.state === 'suspended') {
+        videoAudioContext.resume();
+      }
+      exportVideoAsFile();
+    });
+  }
+
+  // SRT蟄怜ｹ輔ム繧ｦ繝ｳ繝ｭ繝ｼ繝�
+  if (btnDownloadSrt) {
+    btnDownloadSrt.addEventListener('click', () => {
+      downloadSrtFile();
+    });
+  }
+
+  // JSON繝繧ｦ繝ｳ繝ｭ繝ｼ繝�
+  if (btnDownloadJson) {
+    btnDownloadJson.addEventListener('click', () => {
+      downloadJsonScript();
+    });
+  }
+}
+
+// 繧ｭ繝｣繝ｳ繝舌せ蜀��繝ｭ繝ｼ繝�ぅ繝ｳ繧ｰ陦ｨ遉ｺ
+function showCanvasLoading(show) {
+  const canvas = safeGetElement('video-canvas');
+  if (!canvas) return;
+  const ctx = canvas.getContext('2d');
+  
+  ctx.fillStyle = '#020617';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  
+  if (show) {
+    ctx.fillStyle = '#ffffff';
+    ctx.font = 'bold 36px "Noto Sans JP", sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('邏�譚千判蜒上ｒ繝ｭ繝ｼ繝我ｸｭ...', canvas.width / 2, canvas.height / 2);
+  }
+}
+
+// 逕ｻ蜒上�繝ｪ繝ｭ繝ｼ繝�
+function preloadVideoImages() {
+  return new Promise((resolve, reject) => {
+    let loadedCount = 0;
+    const imgA = new Image();
+    const imgB = new Image();
+    
+    const checkLoaded = () => {
+      loadedCount++;
+      if (loadedCount === 2) {
+        resolve({ imgA, imgB });
+      }
+    };
+    
+    imgA.onload = checkLoaded;
+    imgA.onerror = () => reject(new Error("Image A loading failed"));
+    imgB.onload = checkLoaded;
+    imgB.onerror = () => reject(new Error("Image B loading failed"));
+    
+    imgA.src = uploadedImageDataA;
+    imgB.src = uploadedImageDataB;
+  });
+}
+
+// 迥ｶ諷九Μ繧ｻ繝�ヨ
+function resetVideoState() {
+  videoPlaybackTime = 0;
+  videoIsPlaying = false;
+  videoIsExporting = false;
+  updatePlaybackUI();
+}
+
+// 髱咏噪繝励Ξ繝薙Η繝ｼ縺ｮ謠冗判 (譛蛻昴�繝輔Ξ繝ｼ繝�)
+function drawStaticPreview() {
+  const canvas = safeGetElement('video-canvas');
+  if (!canvas || !videoPreloadedImages) return;
+  
+  renderFrameAtTime(0);
+  const overlay = safeGetElement('canvas-play-overlay');
+  if (overlay) overlay.classList.remove('hidden');
+}
+
+// 蜀咲函髢句ｧ�
+async function startVideoPreview() {
+  if (videoIsExporting) return;
+  
+  // 髻ｳ螢ｰ蜷域�縺ｮ荳ｭ譁ｭ
+  if (window.speechSynthesis) {
+    window.speechSynthesis.cancel();
+  }
+
+  // AudioContext 縺ｮ蛻晄悄蛹�
+  await initAudioContext();
+  
+  videoIsPlaying = true;
+  const btnPlay = safeGetElement('btn-video-play');
+  if (btnPlay) {
+    btnPlay.innerHTML = '<i class="fa-solid fa-pause"></i> 荳譎ょ●豁｢';
+  }
+  
+  const overlay = safeGetElement('canvas-play-overlay');
+  if (overlay) overlay.classList.add('hidden');
+
+  // BGM 繝薙�繝育函謌舌�髢句ｧ�
+  startSynthesizedBgm();
+
+  // 繧ｷ繝ｼ繝ｳ髻ｳ隱ｭ縺ｮ蛻晏屓繧ｭ繝�け
+  speakCurrentSceneSpeech();
+
+  let lastTime = performance.now();
+  
+  function animLoop(now) {
+    if (!videoIsPlaying) return;
+    
+    const delta = (now - lastTime) / 1000;
+    lastTime = now;
+    
+    // 譎る俣繧帝ｲ繧√ｋ
+    const oldSceneIdx = Math.floor(videoPlaybackTime / 8);
+    videoPlaybackTime += delta;
+    const newSceneIdx = Math.floor(videoPlaybackTime / 8);
+
+    // 繧ｷ繝ｼ繝ｳ縺悟､峨ｏ縺｣縺溘ｉ蝟九ｉ縺帙ｋ
+    if (newSceneIdx !== oldSceneIdx && newSceneIdx < 4) {
+      speakCurrentSceneSpeech();
+    }
+    
+    if (videoPlaybackTime >= videoTotalDuration) {
+      // 蜀咲函邨ゆｺ�
+      stopVideoPreview();
+      return;
+    }
+    
+    renderFrameAtTime(videoPlaybackTime);
+    updatePlaybackUI();
+    
+    videoAnimationId = requestAnimationFrame(animLoop);
+  }
+  
+  videoAnimationId = requestAnimationFrame(animLoop);
+}
+
+// 荳譎ょ●豁｢
+function pauseVideoPreview() {
+  videoIsPlaying = false;
+  const btnPlay = safeGetElement('btn-video-play');
+  if (btnPlay) {
+    btnPlay.innerHTML = '<i class="fa-solid fa-play"></i> 繝励Ξ繝薙Η繝ｼ蜀咲函';
+  }
+  
+  if (window.speechSynthesis) {
+    window.speechSynthesis.cancel();
+  }
+  
+  stopSynthesizedBgm();
+  
+  if (videoAnimationId) {
+    cancelAnimationFrame(videoAnimationId);
+  }
+}
+
+// 螳悟�蛛懈ｭ｢
+function stopVideoPreview() {
+  pauseVideoPreview();
+  resetVideoState();
+  drawStaticPreview();
+}
+
+// 蜀咲函迥ｶ諷偽I縺ｮ譖ｴ譁ｰ
+function updatePlaybackUI() {
+  const currentText = safeGetElement('video-time-current');
+  const totalText = safeGetElement('video-time-total');
+  const bar = safeGetElement('video-progress-bar');
+  
+  if (currentText) currentText.textContent = videoPlaybackTime.toFixed(1) + '遘�';
+  if (totalText) totalText.textContent = videoTotalDuration.toFixed(1) + '遘�';
+  
+  if (bar) {
+    const percentage = (videoPlaybackTime / videoTotalDuration) * 100;
+    bar.style.width = percentage + '%';
+  }
+
+  // 繧ｷ繝ｼ繝ｳ繝�く繧ｹ繝域ュ蝣ｱ縺ｮ譖ｴ譁ｰ
+  const sceneIdx = Math.floor(videoPlaybackTime / 8);
+  if (sceneIdx < 4) {
+    const scenes = getActiveScriptScenes();
+    if (scenes && scenes[sceneIdx]) {
+      const activeScene = scenes[sceneIdx];
+      const sceneNum = safeGetElement('preview-scene-num');
+      const sceneTitle = safeGetElement('preview-scene-title');
+      const sceneSpeech = safeGetElement('preview-scene-speech');
+      
+      if (sceneNum) sceneNum.textContent = `繧ｷ繝ｼ繝ｳ ${sceneIdx + 1} / 4 (${activeScene.time})`;
+      if (sceneTitle) sceneTitle.textContent = activeScene.title;
+      if (sceneSpeech) sceneSpeech.textContent = activeScene.speech;
+    }
+  }
+}
+
+// 迴ｾ蝨ｨ驕ｸ謚槭＆繧後※縺�ｋ繧ｹ繧ｿ繧､繝ｫ縺ｮ蜿ｰ譛ｬ繧ｷ繝ｼ繝ｳ繝ｪ繧ｹ繝医ｒ蜿門ｾ�
+function getActiveScriptScenes() {
+  if (!currentAnalysisData) return null;
+  const activeTab = document.querySelector('.script-tab-btn.active');
+  const style = activeTab ? activeTab.getAttribute('data-style') : 'buzz';
+  return currentAnalysisData.scripts[style];
+}
+
+// 髻ｳ螢ｰ蜷域�縺ｧ迴ｾ蝨ｨ縺ｮ繧ｷ繝ｼ繝ｳ繧定ｪｭ縺ｿ荳翫￡繧�
+function speakCurrentSceneSpeech() {
+  if (!window.speechSynthesis || videoIsExporting) return;
+  
+  const sceneIdx = Math.floor(videoPlaybackTime / 8);
+  const scenes = getActiveScriptScenes();
+  if (!scenes || !scenes[sceneIdx]) return;
+  
+  window.speechSynthesis.cancel();
+  
+  const text = scenes[sceneIdx].speech;
+  const utterance = new SpeechSynthesisUtterance(text);
+  utterance.lang = 'ja-JP';
+  utterance.rate = 1.1; // 繧�ｄ繧ｹ繝斐�繝�ぅ繝ｼ縺ｫ
+  
+  // 譌･譛ｬ隱櫁ｩｱ閠�ｨｭ螳�
+  const voices = window.speechSynthesis.getVoices();
+  const jaVoice = voices.find(v => v.lang.startsWith('ja'));
+  if (jaVoice) {
+    utterance.voice = jaVoice;
+  }
+  
+  window.speechSynthesis.speak(utterance);
+}
+
+// 迚ｹ螳壹�譎る俣縺ｮ繝輔Ξ繝ｼ繝�繧呈緒逕ｻ
+function renderFrameAtTime(timeSec) {
+  const canvas = safeGetElement('video-canvas');
+  if (!canvas || !videoPreloadedImages) return;
+  
+  const ctx = canvas.getContext('2d');
+  const currentSceneIdx = Math.min(Math.floor(timeSec / 8), 3);
+  const nextSceneIdx = Math.min(currentSceneIdx + 1, 3);
+  const sceneTimeOffset = timeSec % 8; // 縺薙�繧ｷ繝ｼ繝ｳ蜀�〒縺ｮ邨碁℃譎る俣(0縲�8)
+  
+  const scenes = getActiveScriptScenes();
+  if (!scenes) return;
+  
+  const currentScene = scenes[Math.min(currentSceneIdx, 3)];
+
+  // 逕ｻ蜒上�驕ｸ謚�
+  // 繧ｷ繝ｼ繝ｳ1(0), 3(2), 4(3) 縺ｯ螳溽ｸｾ逕ｻ蜒� A縲√す繝ｼ繝ｳ2(1) 縺ｯ莉募�繧悟次萓｡逕ｻ蜒� B
+  const getImgForScene = (idx) => {
+    return idx === 1 ? videoPreloadedImages.imgB : videoPreloadedImages.imgA;
+  };
+
+  const imgCurrent = getImgForScene(currentSceneIdx);
+  const imgNext = getImgForScene(nextSceneIdx);
+
+  // 繝輔ぉ繝ｼ繝臥紫縺ｮ險育ｮ� (譛蠕後�0.5遘偵〒谺｡縺ｮ繧ｷ繝ｼ繝ｳ縺ｸ貊代ｉ縺九↓繧ｯ繝ｭ繧ｹ繝輔ぉ繝ｼ繝�)
+  let fadeRatio = 0;
+  if (sceneTimeOffset > 7.5 && currentSceneIdx < 3) {
+    fadeRatio = (sceneTimeOffset - 7.5) / 0.5;
+  }
+
+  // 1. 逕ｻ蜒上ｒ繧｢繧ｹ繝壹け繝域ｯ皮ｶｭ謖√� Contain 謠冗判 (蛻�ｊ蜿悶ｊ繧貞ｮ悟�縺ｫ髦ｲ縺弱∝�菴薙ｒ邯ｺ鮗励↓陦ｨ遉ｺ)
+  ctx.fillStyle = '#0a0f1d';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+  const drawContainImg = (img, opacity) => {
+    ctx.save();
+    ctx.globalAlpha = opacity;
+    
+    // 逕ｻ蜒上�螳悟�縺ｫ蝗ｺ螳� (繧ｺ繝ｼ繝�繧�せ繝ｩ繧､繝峨∝�繧雁叙繧翫�荳蛻�｡後ｏ縺ｪ縺�)
+    ctx.translate(canvas.width / 2, canvas.height / 2);
+    
+    const imgRatio = img.width / img.height;
+    const canvasRatio = canvas.width / canvas.height;
+    let renderW, renderH;
+    
+    // 逕ｻ髱｢蜀�↓縺ｴ縺｣縺溘ｊ蜿弱ａ繧� (Contain)
+    if (imgRatio > canvasRatio) {
+      renderW = canvas.width;
+      renderH = canvas.width / imgRatio;
+    } else {
+      renderH = canvas.height;
+      renderW = canvas.height * imgRatio;
+    }
+    
+    ctx.drawImage(img, -renderW / 2, -renderH / 2, renderW, renderH);
+    ctx.restore();
+  };
+
+  // 閭梧勹縺ｮ繧ｯ繝ｭ繧ｹ繝輔ぉ繝ｼ繝画緒逕ｻ
+  if (fadeRatio > 0) {
+    drawContainImg(imgCurrent, 1 - fadeRatio);
+    drawContainImg(imgNext, fadeRatio);
+  } else {
+    drawContainImg(imgCurrent, 1);
+  }
+
+  // 蜈ｨ菴薙ｒ隕�≧證励ａ縺ｮ繧ｷ繝阪�繝�ぅ繝�け繧ｰ繝ｩ繝��繧ｷ繝ｧ繝ｳ (繝�Ο繝��縺ｮ隕冶ｪ肴ｧ遒ｺ菫�)
+  const vGrad = ctx.createLinearGradient(0, 0, 0, canvas.height);
+  vGrad.addColorStop(0, 'rgba(0, 0, 0, 0.45)');
+  vGrad.addColorStop(0.3, 'rgba(0, 0, 0, 0.2)');
+  vGrad.addColorStop(0.7, 'rgba(0, 0, 0, 0.25)');
+  vGrad.addColorStop(1, 'rgba(0, 0, 0, 0.7)');
+  ctx.fillStyle = vGrad;
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+  // 2. 雜�ｷｨ螟ｧ謨ｰ蟄励ユ繝ｭ繝��縺ｮ謠冗判 (逕ｻ髱｢荳ｭ螟ｮ Y=450 莉倩ｿ代↓驟咲ｽｮ)
+  if (currentAnalysisData) {
+    const formattedProfit = formatCurrency(currentAnalysisData.profit);
+    const formattedCost = formatCurrency(currentAnalysisData.purchasePrice);
+    const formattedRate = `${currentAnalysisData.profitRate}%`;
+    const formattedSell = formatCurrency(currentAnalysisData.sellPrice);
+
+    // 逕ｻ蜒上°繧蛾∵侭繝ｻ謇区焚譁吶′讀懷�縺輔ｌ縺溘°縺ｩ縺�°縺ｧ繝ｩ繝吶Ν繧貞､画峩
+    const hasExtra = (currentAnalysisData.shipping > 0 || currentAnalysisData.fee > 0);
+    const profitLabel = hasExtra ? '謇区ｮ九ｊ蛻ｩ逶�' : '蛻ｩ逶雁ｷｮ鬘�';
+    const profitSubLabel = hasExtra ? '騾∵侭繝ｻ謇区焚譁呵��' : '逕ｻ蜒上ョ繝ｼ繧ｿ縺九ｉ閾ｪ蜍戊ｨ育ｮ�';
+
+    const drawHugeNumber = (label, mainVal, subLabel = '', mainColor = '#facc15') => {
+      ctx.save();
+      const centerY = 450;
+
+      // 讌ｵ螟ｪ縺ｮ鮟堤ｸ∝叙繧翫〒逕ｻ蜒上→縺ｮ驥阪↑繧翫〒繧らｵｶ蟇ｾ縺ｫ隕九ｄ縺吶￥縺吶ｋ
+      ctx.strokeStyle = '#000000';
+      ctx.lineWidth = 14;
+      ctx.lineJoin = 'round';
+
+      // 繝阪が繝ｳ隱ｿ縺ｮ蠑ｷ蜉帙↑繝峨Ο繝��繧ｷ繝｣繝峨え (繧ｰ繝ｭ繝ｼ蜉ｹ譫�)
+      ctx.shadowColor = 'rgba(0, 0, 0, 0.95)';
+      ctx.shadowBlur = 18;
+      ctx.shadowOffsetX = 0;
+      ctx.shadowOffsetY = 6;
+
+      // 繝ｩ繝吶Ν (荳謦�茜逶翫∽ｻ募�繧悟次萓｡縺ｪ縺ｩ)
+      if (label) {
+        ctx.fillStyle = '#ffffff';
+        ctx.font = '900 36px "Noto Sans JP", sans-serif';
+        ctx.textAlign = 'center';
+        ctx.strokeText(label, canvas.width / 2, centerY - 90);
+        ctx.fillText(label, canvas.width / 2, centerY - 90);
+      }
+
+      // 繝｡繧､繝ｳ縺ｮ雜�ｷｨ螟ｧ謨ｰ蛟､ (ﾂ･12,500 縺ｪ縺ｩ)
+      if (mainVal) {
+        ctx.fillStyle = mainColor;
+        ctx.font = '900 85px "Noto Sans JP", sans-serif';
+        ctx.textAlign = 'center';
+        ctx.strokeText(mainVal, canvas.width / 2, centerY + 10);
+        ctx.fillText(mainVal, canvas.width / 2, centerY + 10);
+      }
+
+      // 繧ｵ繝匁ュ蝣ｱ
+      if (subLabel) {
+        ctx.fillStyle = '#ffffff';
+        ctx.font = '900 42px "Noto Sans JP", sans-serif';
+        ctx.textAlign = 'center';
+        ctx.strokeText(subLabel, canvas.width / 2, centerY + 95);
+        ctx.fillText(subLabel, canvas.width / 2, centerY + 95);
+      }
+      ctx.restore();
+    };
+
+    // 繧ｷ繝ｼ繝ｳ縺斐→縺ｮ蟾ｨ螟ｧ謨ｰ蟄励い繝斐�繝ｫ蛻�ｊ譖ｿ縺�
+    if (currentSceneIdx === 0) {
+      // 繧ｷ繝ｼ繝ｳ1: 繝輔ャ繧ｯ
+      drawHugeNumber(profitLabel, `+${formattedProfit}!!`, profitSubLabel, '#facc15'); // 繧､繧ｨ繝ｭ繝ｼ
+    } else if (currentSceneIdx === 1) {
+      // 繧ｷ繝ｼ繝ｳ2: 莉募�繧� (莉募�繧悟次萓｡繧貞�髢�)
+      drawHugeNumber('莉募�繧悟次萓｡', `${formattedCost}`, `雋ｩ螢ｲ萓｡譬ｼ ${formattedSell}`, '#ef4444'); // 襍､
+    } else if (currentSceneIdx === 2) {
+      // 繧ｷ繝ｼ繝ｳ3: 蛻ｩ逶雁�險ｳ (蛻ｩ逶企｡阪→蛻ｩ逶顔紫繧偵い繝斐�繝ｫ)
+      drawHugeNumber(profitLabel, `+${formattedProfit}!!`, `蛻ｩ逶顔紫 ${formattedRate}`, '#10b981'); // 繧ｰ繝ｪ繝ｼ繝ｳ
+    } else if (currentSceneIdx === 3) {
+      // 繧ｷ繝ｼ繝ｳ4: CTA繝ｻ繧ｯ繝ｭ繝ｼ繧ｸ繝ｳ繧ｰ
+      drawHugeNumber('蛻ｩ逶顔紫', `${formattedRate}`, '蛻晏ｿ��髄縺醍黄雋ｩ繝ｭ繝ｼ繝峨�繝��', '#06b6d4'); // 繧ｷ繧｢繝ｳ
+    }
+  }
+
+  // 3. 蛻ｩ逶雁柑譫憺浹 (繧ｷ繝ｼ繝ｳ3遯∝�譎�)
+  if (currentSceneIdx === 2 && sceneTimeOffset < 0.1) {
+    playCoinSound(videoAudioContext, videoIsExporting ? videoAudioDestination : videoAudioContext.destination);
+  }
+
+  // 4. 蟄怜ｹ輔ユ繝ｭ繝��縺ｮ謠冗判 (繝翫Ξ繝ｼ繧ｷ繝ｧ繝ｳ縺ｯ蟾ｨ螟ｧ謨ｰ蟄励→驥阪↑繧峨↑縺�ｈ縺�怙荳矩Κ Y=1130 莉倩ｿ代↓驟咲ｽｮ)
+  if (currentScene) {
+    const text = currentScene.speech;
+    const textY = 1130;
+
+    ctx.save();
+    ctx.fillStyle = '#ffffff';
+    ctx.font = 'bold 36px "Noto Sans JP", sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+
+    // 隱ｭ縺ｿ繧�☆縺輔ｒ遒ｺ菫昴☆繧矩ｻ堤ｸ∝叙繧翫→繝峨Ο繝��繧ｷ繝｣繝峨え
+    ctx.strokeStyle = '#000000';
+    ctx.lineWidth = 6;
+    ctx.lineJoin = 'round';
+    
+    ctx.shadowColor = 'rgba(0, 0, 0, 0.9)';
+    ctx.shadowBlur = 8;
+    ctx.shadowOffsetX = 1;
+    ctx.shadowOffsetY = 3;
+
+    const charsPerLine = 16;
+    if (text.length > charsPerLine) {
+      const line1 = text.substring(0, charsPerLine);
+      const line2 = text.substring(charsPerLine);
+      
+      ctx.strokeText(line1, canvas.width / 2, textY - 26);
+      ctx.fillText(line1, canvas.width / 2, textY - 26);
+      
+      ctx.strokeText(line2, canvas.width / 2, textY + 26);
+      ctx.fillText(line2, canvas.width / 2, textY + 26);
+    } else {
+      ctx.strokeText(text, canvas.width / 2, textY);
+      ctx.fillText(text, canvas.width / 2, textY);
+    }
+    ctx.restore();
+  }
+}
+
+// AudioContext 縺ｮ驕�ｻｶ蛻晄悄蛹�
+async function initAudioContext() {
+  if (!videoAudioContext) {
+    // 繝悶Λ繧ｦ繧ｶ縺ｮ莠呈鋤諤ｧ遒ｺ菫�
+    const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+    if (AudioContextClass) {
+      videoAudioContext = new AudioContextClass();
+      // 骭ｲ逕ｻ逕ｨ縺ｫ繧ｪ繝ｼ繝�ぅ繧ｪ繧ｹ繝医Μ繝ｼ繝�繝弱�繝峨ｒ菴懈�
+      if (videoAudioContext.createMediaStreamDestination) {
+        videoAudioDestination = videoAudioContext.createMediaStreamDestination();
+        
+        // Chrome縺ｮ辟｡髻ｳ繝医Λ繝�け遐ｴ譽�ヰ繧ｰ蟇ｾ遲厄ｼ壼ｾｮ蠑ｱ縺ｪ辟｡髻ｳ菫｡蜿ｷ繧貞ｸｸ譎よｵ√＠縲√ヨ繝ｩ繝�け繧偵い繧ｯ繝�ぅ繝悶↓菫昴■縺ｾ縺�
+        try {
+          const silentOsc = videoAudioContext.createOscillator();
+          const silentGain = videoAudioContext.createGain();
+          silentGain.gain.setValueAtTime(0.0001, videoAudioContext.currentTime); // 讌ｵ蠕ｮ蟆上↑辟｡髻ｳ
+          silentOsc.connect(silentGain);
+          silentGain.connect(videoAudioDestination);
+          silentOsc.start();
+        } catch (oscErr) {
+          console.error("Failed to create silent oscillator:", oscErr);
+        }
+      }
+    }
+  }
+  if (videoAudioContext && videoAudioContext.state === 'suspended') {
+    await videoAudioContext.resume();
+  }
+}
+
+// BGM 繝薙�繝育函謌�
+function startSynthesizedBgm() {
+  if (!videoAudioContext) return;
+  if (videoBgmInterval) clearInterval(videoBgmInterval);
+  
+  // 譖ｸ縺榊�縺嶺ｸｭ縺ｯ骭ｲ逕ｻ繝弱�繝峨√�繝ｬ繝薙Η繝ｼ蜀咲函譎ゅ�繧ｹ繝斐�繧ｫ繝ｼ��estination�峨∈蜍慕噪縺ｫ繝ｫ繝ｼ繝�ぅ繝ｳ繧ｰ
+  const dest = videoIsExporting ? videoAudioDestination : videoAudioContext.destination;
+  let beatCount = 0;
+  
+  // 0.5遘偵＃縺ｨ縺ｫ繝峨Λ繝�繧ｭ繝�け縺ｨ繝上う繝上ャ繝医ｒ繧ｷ繝溘Η繝ｬ繝ｼ繧ｷ繝ｧ繝ｳ
+  videoBgmInterval = setInterval(() => {
+    if (!videoIsPlaying && !videoIsExporting) return;
+    
+    // 繝峨Λ繝�繧ｭ繝�け (蛛ｶ謨ｰ諡�)
+    if (beatCount % 2 === 0) {
+      triggerKick(videoAudioContext, dest);
+    }
+    
+    // 繝上う繝上ャ繝� (蜈ｨ諡�)
+    triggerHihat(videoAudioContext, dest);
+    
+    beatCount++;
+  }, 500);
+}
+
+function stopSynthesizedBgm() {
+  if (videoBgmInterval) {
+    clearInterval(videoBgmInterval);
+    videoBgmInterval = null;
+  }
+}
+
+// 繝峨Λ繝�繧ｭ繝�け繧ｷ繝ｳ繧ｻ
+function triggerKick(audioCtx, dest) {
+  try {
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.connect(gain);
+    gain.connect(dest);
+    
+    osc.frequency.setValueAtTime(150, audioCtx.currentTime);
+    osc.frequency.exponentialRampToValueAtTime(40, audioCtx.currentTime + 0.2);
+    
+    gain.gain.setValueAtTime(0.4, audioCtx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.2);
+    
+    osc.start();
+    osc.stop(audioCtx.currentTime + 0.2);
+  } catch (e) {
+    console.error(e);
+  }
+}
+
+// 繝上う繝上ャ繝医す繝ｳ繧ｻ
+function triggerHihat(audioCtx, dest) {
+  try {
+    const bufferSize = audioCtx.sampleRate * 0.05;
+    const buffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
+    const data = buffer.getChannelData(0);
+    for (let i = 0; i < bufferSize; i++) {
+      data[i] = Math.random() * 2 - 1;
+    }
+    
+    const noise = audioCtx.createBufferSource();
+    noise.buffer = buffer;
+    
+    const filter = audioCtx.createBiquadFilter();
+    filter.type = 'highpass';
+    filter.frequency.value = 8000;
+    
+    const gain = audioCtx.createGain();
+    gain.gain.setValueAtTime(0.05, audioCtx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.05);
+    
+    noise.connect(filter);
+    filter.connect(gain);
+    gain.connect(dest);
+    
+    noise.start();
+  } catch (e) {
+    console.error(e);
+  }
+}
+
+// 繧ｳ繧､繝ｳ髻ｳ�医メ繝｣繝ｪ繝ｼ繝ｳ�峨す繝ｳ繧ｻ
+function playCoinSound(audioCtx, dest) {
+  try {
+    const osc1 = audioCtx.createOscillator();
+    const osc2 = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    
+    osc1.type = 'sine';
+    osc2.type = 'sine';
+    
+    osc1.frequency.setValueAtTime(987.77, audioCtx.currentTime); // B5
+    osc2.frequency.setValueAtTime(1318.51, audioCtx.currentTime + 0.05); // E6
+    
+    gain.gain.setValueAtTime(0.001, audioCtx.currentTime);
+    gain.gain.linearRampToValueAtTime(0.2, audioCtx.currentTime + 0.05);
+    gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.7);
+    
+    osc1.connect(gain);
+    osc2.connect(gain);
+    gain.connect(dest);
+    
+    osc1.start();
+    osc2.start();
+    
+    osc1.stop(audioCtx.currentTime + 0.7);
+    osc2.stop(audioCtx.currentTime + 0.7);
+  } catch (e) {
+    console.error(e);
+  }
+}
+
+// WebM 蜍慕判縺ｮ菴懈�繝ｻ繝繧ｦ繝ｳ繝ｭ繝ｼ繝�
+async function exportVideoAsFile() {
+  if (videoIsExporting) return;
+  
+  // 迴ｾ蝨ｨ縺ｮ蜀咲函繧貞●豁｢
+  stopVideoPreview();
+  await initAudioContext();
+  
+  videoIsExporting = true;
+  videoRecordedChunks = [];
+  
+  const btnExport = safeGetElement('btn-video-export');
+  const statusDiv = safeGetElement('export-status');
+  const progressBar = safeGetElement('export-progress-bar');
+  const progressText = safeGetElement('export-progress-text');
+  
+  if (btnExport) btnExport.disabled = true;
+  if (statusDiv) statusDiv.classList.remove('hidden');
+  
+  const canvas = safeGetElement('video-canvas');
+  if (!canvas) return;
+
+  // 繧ｭ繝｣繝ｳ繝舌せ繧ｹ繝医Μ繝ｼ繝� (30fps)
+  const canvasStream = canvas.captureStream(30);
+  const tracks = [];
+  
+  // 譏�蜒上ヨ繝ｩ繝�け縺ｮ霑ｽ蜉�
+  canvasStream.getVideoTracks().forEach(track => tracks.push(track));
+  
+  // 髻ｳ螢ｰ繝医Λ繝�け縺ｮ霑ｽ蜉� (Web Audio 縺九ｉ)
+  if (videoAudioDestination) {
+    videoAudioDestination.stream.getAudioTracks().forEach(track => {
+      tracks.push(track);
+    });
+  }
+
+  // 繧ｹ繝槭�蟇ｾ蠢懶ｼ哺ediaStream菴懈�譎ゅ↓繝医Λ繝�け驟榊�繧堤峩謗･貂｡縺吶％縺ｨ縺ｧ髻ｳ螢ｰ谺�關ｽ繧帝亟縺弱∪縺�
+  const mixedStream = new MediaStream(tracks);
+  
+  // MediaRecorder 繧､繝ｳ繧ｹ繧ｿ繝ｳ繧ｹ逕滓� (繧ｹ繝槭�繝ｻPC莠呈鋤諤ｧ繧帝ｫ倥ａ繧九◆繧� MP4/AAC 蠖｢蠑上ｒ譛蜆ｪ蜈�)
+  let options = { mimeType: 'video/mp4;codecs=avc1,mp4a' };
+  let extension = 'mp4';
+  
+  if (!MediaRecorder.isTypeSupported(options.mimeType)) {
+    options = { mimeType: 'video/mp4' };
+  }
+  if (!MediaRecorder.isTypeSupported(options.mimeType)) {
+    options = { mimeType: 'video/webm;codecs=vp9,opus' };
+    extension = 'webm';
+  }
+  if (!MediaRecorder.isTypeSupported(options.mimeType)) {
+    options = { mimeType: 'video/webm;codecs=vp8,opus' };
+    extension = 'webm';
+  }
+  if (!MediaRecorder.isTypeSupported(options.mimeType)) {
+    options = { mimeType: 'video/webm' };
+    extension = 'webm';
+  }
+  
+  try {
+    videoRecorder = new MediaRecorder(mixedStream, options);
+  } catch (e) {
+    console.error('MediaRecorder縺ｮ蛻晄悄蛹悶↓螟ｱ謨励＠縺ｾ縺励◆縲ゅョ繝輔か繝ｫ繝郁ｨｭ螳壹ｒ菴ｿ縺�∪縺�:', e);
+    videoRecorder = new MediaRecorder(mixedStream);
+    if (videoRecorder.mimeType && videoRecorder.mimeType.includes('mp4')) {
+      extension = 'mp4';
+    } else {
+      extension = 'webm';
+    }
+  }
+  
+  videoRecorder.ondataavailable = (event) => {
+    if (event.data && event.data.size > 0) {
+      videoRecordedChunks.push(event.data);
+    }
+  };
+  
+  videoRecorder.onstop = () => {
+    const blob = new Blob(videoRecordedChunks, { type: videoRecorder.mimeType || 'video/webm' });
+    const url = URL.createObjectURL(blob);
+    
+    // 繝繧ｦ繝ｳ繝ｭ繝ｼ繝峨Μ繝ｳ繧ｯ繧堤函謌舌＠縺ｦ逋ｺ轣ｫ
+    const a = document.createElement('a');
+    a.style.display = 'none';
+    a.href = url;
+    
+    const activeTab = document.querySelector('.script-tab-btn.active');
+    const styleKey = activeTab ? activeTab.getAttribute('data-style') : 'buzz';
+    const prodNameClean = currentAnalysisData.productName.replace(/[\\/:*?"<>|]/g, '');
+    a.download = `縺帙←繧雁虚逕ｻ蜿ｰ譛ｬ_${styleKey}_${prodNameClean}.${extension}`;
+    
+    document.body.appendChild(a);
+    a.click();
+    
+    setTimeout(() => {
+      document.body.removeChild(a);
+      window.URL.revokeObjectURL(url);
+    }, 100);
+    
+    // UI縺ｮ蜈�綾縺�
+    videoIsExporting = false;
+    if (btnExport) btnExport.disabled = false;
+    if (statusDiv) statusDiv.classList.add('hidden');
+    stopSynthesizedBgm();
+    resetVideoState();
+    drawStaticPreview();
+    alert('蜍慕判繝輔ぃ繧､繝ｫ縺ｮ譖ｸ縺榊�縺励′螳御ｺ�＠縲√ム繧ｦ繝ｳ繝ｭ繝ｼ繝峨ｒ髢句ｧ九＠縺ｾ縺励◆��');
+  };
+  
+  // 骭ｲ逕ｻ髢句ｧ�
+  videoRecorder.start();
+  startSynthesizedBgm();
+  
+  // 繝ｬ繝ｳ繝繝ｪ繝ｳ繧ｰ繝ｫ繝ｼ繝� (螳滓凾髢薙〒蝗槭☆)
+  let lastTime = performance.now();
+  videoPlaybackTime = 0;
+  
+  function exportLoop(now) {
+    const delta = (now - lastTime) / 1000;
+    lastTime = now;
+    
+    videoPlaybackTime += delta;
+    
+    // 騾ｲ謐苓｡ｨ遉ｺ
+    const progress = Math.min((videoPlaybackTime / videoTotalDuration) * 100, 100);
+    if (progressBar) progressBar.style.width = progress + '%';
+    if (progressText) progressText.textContent = Math.round(progress) + '%';
+    
+    if (videoPlaybackTime >= videoTotalDuration) {
+      // 邨ゆｺ�
+      videoRecorder.stop();
+      return;
+    }
+    
+    renderFrameAtTime(videoPlaybackTime);
+    
+    requestAnimationFrame(exportLoop);
+  }
+  
+  requestAnimationFrame(exportLoop);
+}
+
+// SRT蟄怜ｹ輔ヵ繧｡繧､繝ｫ縺ｮ繝繧ｦ繝ｳ繝ｭ繝ｼ繝�
+function downloadSrtFile() {
+  const scenes = getActiveScriptScenes();
+  if (!scenes) return;
+  
+  let srtContent = '';
+  
+  scenes.forEach((scene, index) => {
+    const startSec = index * 8;
+    const endSec = (index + 1) * 8;
+    
+    const formatTime = (totalSec) => {
+      const hrs = Math.floor(totalSec / 3600).toString().padStart(2, '0');
+      const mins = Math.floor((totalSec % 3600) / 60).toString().padStart(2, '0');
+      const secs = Math.floor(totalSec % 60).toString().padStart(2, '0');
+      const ms = Math.floor((totalSec % 1) * 1000).toString().padStart(3, '0');
+      return `${hrs}:${mins}:${secs},${ms}`;
+    };
+    
+    srtContent += `${index + 1}\n`;
+    srtContent += `${formatTime(startSec)} --> ${formatTime(endSec)}\n`;
+    srtContent += `${scene.speech}\n\n`;
+  });
+  
+  const blob = new Blob([srtContent], { type: 'text/srt;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  
+  const activeTab = document.querySelector('.script-tab-btn.active');
+  const styleKey = activeTab ? activeTab.getAttribute('data-style') : 'buzz';
+  const prodNameClean = currentAnalysisData.productName.replace(/[\\/:*?"<>|]/g, '');
+  a.download = `蟄怜ｹ廟${styleKey}_${prodNameClean}.srt`;
+  
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+// JSON蜿ｰ譛ｬ繝��繧ｿ縺ｮ繝繧ｦ繝ｳ繝ｭ繝ｼ繝�
+function downloadJsonScript() {
+  if (!currentAnalysisData) return;
+  
+  const jsonStr = JSON.stringify(currentAnalysisData, null, 2);
+  const blob = new Blob([jsonStr], { type: 'application/json;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  
+  const prodNameClean = currentAnalysisData.productName.replace(/[\\/:*?"<>|]/g, '');
+  a.download = `蜿ｰ譛ｬ繝��繧ｿ_${prodNameClean}.json`;
+  
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}

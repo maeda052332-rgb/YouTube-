@@ -87,9 +87,14 @@ function setupVideoDubbingListeners() {
 
   // 領域クリックでファイル選択
   videoDropArea.addEventListener('click', (e) => {
-    // 削除ボタンやビデオコントロールをクリックしたときは除外
-    if (e.target.closest('#btn-remove-video') || e.target.closest('video')) return;
+    // 削除ボタンやビデオコントロールをクリックしたときは除外、またファイル選択インプット自体からのバブルも無視
+    if (e.target.closest('#btn-remove-video') || e.target.closest('video') || e.target === videoFileInput) return;
     videoFileInput.click();
+  });
+
+  // ファイル入力要素でのクリックバブリングを防いで、クリックイベントの無限ループ（再帰）を防止する
+  videoFileInput.addEventListener('click', (e) => {
+    e.stopPropagation();
   });
 
   videoFileInput.addEventListener('change', (e) => {
@@ -349,7 +354,7 @@ async function fetchVideoScriptFromGemini(apiKey) {
 4. 販売価格、仕入れ原価、利益額などの数値は、視聴者の心を惹きつける架空の具体的なリアル値（例: 売値14,800円、仕入れ3,800円、利益11,000円など）を設定してください。
    ※ 利益 ＝ 販売価格 － 仕入れ価格 とし、余計な手数料や送料の推測は差し引かないでください。
 5. 利益率 ＝ 利益 ÷ 販売価格 × 100 (%) を四捨五入した整数で計算してください。
-6. すべてのスクリプトスタイルにおいて、最後のシーン（4番目のシーン）の吹き替え用セリフ（speech）の末尾には、必ず視聴者に対してチャンネル登録と高評価を促す言葉（例：「チャンネル登録・高評価もよろしくね！」「チャンネル登録高評価も忘れずに！」など）を必ず含めてください。
+6. すべてのスクリプトスタイルにおいて、最後のシーン（4番目のシーン）の吹き替え用セリフ（speech）の末尾には、必ず視聴者に対してチャンネル登録といいねを促すフレーズとして「チャンネル登録・いいねをお願いします！」を必ず含めてください。
 
 【出力フォーマット】
 以下のJSON構造のみを返してください。余計なマークダウンの \`\`\`json ラッパーや説明テキストは一切含めないでください。
@@ -434,26 +439,56 @@ function generateMockVideoScript() {
         { title: "フック", time: makeTimeStr(0), speech: "一撃利益" + formatCurrency(profit) + "！メルカリで即売れしたスニーカーの裏側を大公開！" },
         { title: "仕入れ状況", time: makeTimeStr(1), speech: "このスニーカーの仕入れ価格はなんと" + formatCurrency(purchasePrice) + "。ボロボロの状態で仕入れました。" },
         { title: "再生・出品", time: makeTimeStr(2), speech: "綺麗にクリーニングしてメルカリに出品したら、わずか30分で" + formatCurrency(sellPrice) + "で売れました！" },
-        { title: "利益確定", time: makeTimeStr(3), speech: "今回の利益は" + formatCurrency(profit) + "、利益率は驚異の" + profitRate + "%です！物販ロードマップはプロフから！チャンネル登録高評価もよろしく！" }
+        { title: "利益確定", time: makeTimeStr(3), speech: "今回の利益は" + formatCurrency(profit) + "、利益率は驚異の" + profitRate + "%です！物販ロードマップはプロフから！チャンネル登録・いいねをお願いします！" }
       ],
       educational: [
         { title: "導入", time: makeTimeStr(0), speech: "物販初心者必見！" + formatCurrency(purchasePrice) + "仕入れから" + formatCurrency(profit) + "を出すための仕入れ基準を解説！" },
         { title: "ポイント解説", time: makeTimeStr(1), speech: "重要なのはソールの減り具合と限定カラーの有無。ここさえ見れば価格は3倍になります。" },
         { title: "出品手法", time: makeTimeStr(2), speech: "出品時は明るい背景で撮影し、タイトル先頭に『即購入OK・激レア』と入れるだけで売れやすくなります。" },
-        { title: "まとめ", time: makeTimeStr(3), speech: "これで販売価格は" + formatCurrency(sellPrice) + "。利益は" + formatCurrency(profit) + "になります。忘れないように保存してね！チャンネル登録高評価をお願いします！" }
+        { title: "まとめ", time: makeTimeStr(3), speech: "これで販売価格は" + formatCurrency(sellPrice) + "。利益は" + formatCurrency(profit) + "になります。忘れないように保存してね！チャンネル登録・いいねをお願いします！" }
       ],
       story: [
         { title: "状況説明", time: makeTimeStr(0), speech: "資金ゼロ、物販知識ゼロのサラリーマンが、仕事帰りにふと立ち寄った店舗で見つけたスニーカー。" },
         { title: "行動", time: makeTimeStr(1), speech: "財布に残った" + formatCurrency(purchasePrice) + "を握りしめて仕入れ。不安で押しつぶされそうでした。" },
         { title: "結果", time: makeTimeStr(2), speech: "しかし、出品後すぐにスマホがチャリーン！売値はなんと" + formatCurrency(sellPrice) + "。鳥肌が立ちました。" },
-        { title: "結び", time: makeTimeStr(3), speech: "一撃利益は" + formatCurrency(profit) + "。この体験が人生を変える第一歩になりました。チャンネル登録・高評価も忘れずに！" }
+        { title: "結び", time: makeTimeStr(3), speech: "一撃利益は" + formatCurrency(profit) + "。この体験が人生を変える第一歩になりました。チャンネル登録・いいねをお願いします！" }
       ]
     }
   };
 }
 
+// チャンネル登録・いいねを動画の最後に必ず入れるための強制適用関数
+function enforceEndComment(data) {
+  if (!data || !data.scripts) return;
+  const phrase = "チャンネル登録・いいねをお願いします！";
+  for (const style in data.scripts) {
+    const scenes = data.scripts[style];
+    if (scenes && scenes.length === 4) {
+      let speech = scenes[3].speech;
+      
+      // 類似の既存フレーズを除去
+      speech = speech.replace(/チャンネル登録[・と]?高評価[も]?よろし[くお]?[ね願い]?[しま]?す?[！]?/, '');
+      speech = speech.replace(/チャンネル登録[・と]?高評価[も]?忘れずに[！]?/, '');
+      speech = speech.replace(/チャンネル登録[・と]?いいね[も]?よろし[くお]?[ね願い]?[しま]?す?[！]?/, '');
+      
+      speech = speech.trim();
+      
+      if (!speech.includes("チャンネル登録") || !speech.includes("いいね")) {
+        if (speech.length > 0 && !speech.endsWith('！') && !speech.endsWith('。') && !speech.endsWith('?')) {
+          speech += '！';
+        }
+        speech += phrase;
+      }
+      scenes[3].speech = speech;
+    }
+  }
+}
+
 // 台本出力
 function displayVideoScript(data) {
+  // チャンネル登録・いいねの強制適用
+  enforceEndComment(data);
+
   currentVideoAnalysisData = data;
   
   // 利益と利益率を強制再計算 (バグ回避。送料・手数料があれば考慮)
