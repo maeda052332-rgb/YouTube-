@@ -344,27 +344,27 @@ async function fetchVideoScriptFromGemini(apiKey) {
   const duration = videoEl ? Math.round(videoEl.duration) : 30;
   
   const promptText = `
-あなたはせどり（物販）の動画吹き替えクリエイターです。
-アップロードされた動画（再生時間: ${duration}秒）にぴったりと合う、新しいバズるショート動画用の吹き替えナレーション台本を作成してください。
+あなたはトレーディングカード開封動画の吹き替えクリエイターです。
+アップロードされた動画（再生時間: ${duration}秒）にぴったりと合う、新しくバズるショート動画用の開封吹き替えナレーション台本を作成してください。
 
 【制約ルール】
-1. 動画の元の映像の流れを活かし、せどりで利益が出るプロセス（仕入れ ➡ 出品 ➡ 爆売れ ➡ 利益確定）をドラマチックに説明する台本にします。
+1. 動画の元の映像の流れを活かし、カードパック（またはBOX）を開封して激レアカードが出現し、アド（利益）が確定するプロセスをドラマチックに説明する台本にします。
 2. ナレーション台本は4つのシーン（合計時間: ${duration}秒）に綺麗に等分割できるように構成してください。
 3. ナレーションセリフは1シーンあたり20〜30文字程度の、テンポが良い非常に短い語り口にしてください。無駄な挨拶や前置きは完全に排除します。
-4. 販売価格、仕入れ原価、利益額などの数値は、視聴者の心を惹きつける架空の具体的なリアル値（例: 売値14,800円、仕入れ3,800円、利益11,000円など）を設定してください。
-   ※ 利益 ＝ 販売価格 － 仕入れ価格 とし、余計な手数料や送料の推測は差し引かないでください。
-5. 利益率 ＝ 利益 ÷ 販売価格 × 100 (%) を四捨五入した整数で計算してください。
+4. カードの相場価格、パック代（仕入れ値）、アド額（利益額）などの数値は、視聴者の心を惹きつける具体的なリアル値（例: カード相場50,000円、パック代500円、アド（利益）49,500円など）を設定してください。
+   ※ 利益 ＝ 販売価格（カード相場） － 仕入れ価格（パック代） とし、余計な手数料等は考慮しないでください。
+5. 利益率（還元率） ＝ 利益 ÷ 販売価格 × 100 (%) を四捨五入した整数で計算してください。
 6. すべてのスクリプトスタイルにおいて、最後のシーン（4番目のシーン）の吹き替え用セリフ（speech）の末尾には、必ず視聴者に対してチャンネル登録といいねを促すフレーズとして「チャンネル登録・いいねをお願いします！」を必ず含めてください。
 
 【出力フォーマット】
 以下のJSON構造のみを返してください。余計なマークダウンの \`\`\`json ラッパーや説明テキストは一切含めないでください。
 
 {
-  "productName": "推測した商品名（例: 限定スニーカー）",
-  "sellPrice": 販売価格(数値),
-  "purchasePrice": 仕入れ価格(数値),
-  "profit": 利益(販売価格 - 仕入れ価格の数値),
-  "profitRate": 利益率(数値、四捨五入した整数),
+  "productName": "出現した激レアカード名（例: リザードン SAR）",
+  "sellPrice": カードの相場価格(数値),
+  "purchasePrice": パック代/BOX代(数値),
+  "profit": アド額(相場価格 - パック代の数値),
+  "profitRate": 還元率(数値、四捨五入した整数),
   "scripts": {
     "buzz": [
       {
@@ -419,8 +419,8 @@ function generateMockVideoScript() {
   const totalDuration = videoEl ? videoEl.duration : 32;
   const stepSec = Math.round(totalDuration / 4);
 
-  const sellPrice = 16800;
-  const purchasePrice = 4500;
+  const sellPrice = 25000;
+  const purchasePrice = 500;
   const profit = sellPrice - purchasePrice;
   const profitRate = Math.round((profit / sellPrice) * 100);
 
@@ -429,29 +429,29 @@ function generateMockVideoScript() {
   };
 
   return {
-    productName: "限定コラボスニーカー",
+    productName: "超人気激レアカード",
     sellPrice,
     purchasePrice,
     profit,
     profitRate,
     scripts: {
       buzz: [
-        { title: "フック", time: makeTimeStr(0), speech: "一撃利益" + formatCurrency(profit) + "！メルカリで即売れしたスニーカーの裏側を大公開！" },
-        { title: "仕入れ状況", time: makeTimeStr(1), speech: "このスニーカーの仕入れ価格はなんと" + formatCurrency(purchasePrice) + "。ボロボロの状態で仕入れました。" },
-        { title: "再生・出品", time: makeTimeStr(2), speech: "綺麗にクリーニングしてメルカリに出品したら、わずか30分で" + formatCurrency(sellPrice) + "で売れました！" },
-        { title: "利益確定", time: makeTimeStr(3), speech: "今回の利益は" + formatCurrency(profit) + "、利益率は驚異の" + profitRate + "%です！物販ロードマップはプロフから！チャンネル登録・いいねをお願いします！" }
+        { title: "フック", time: makeTimeStr(0), speech: "1パック500円から激レアカード降臨！一撃アド" + formatCurrency(profit) + "の奇跡を見よ！" },
+        { title: "開封カード", time: makeTimeStr(1), speech: "今回開封したのは新発売のパック。1パックわずか" + formatCurrency(purchasePrice) + "でした。" },
+        { title: "レア出現", time: makeTimeStr(2), speech: "そしたらなんと、封入率激低のトップレアカードが出現！現在の相場は" + formatCurrency(sellPrice) + "！" },
+        { title: "アド確定", time: makeTimeStr(3), speech: "アド額は" + formatCurrency(profit) + "、驚異の還元率" + profitRate + "%！今回のカードの詳細はプロフから！チャンネル登録・いいねをお願いします！" }
       ],
       educational: [
-        { title: "導入", time: makeTimeStr(0), speech: "物販初心者必見！" + formatCurrency(purchasePrice) + "仕入れから" + formatCurrency(profit) + "を出すための仕入れ基準を解説！" },
-        { title: "ポイント解説", time: makeTimeStr(1), speech: "重要なのはソールの減り具合と限定カラーの有無。ここさえ見れば価格は3倍になります。" },
-        { title: "出品手法", time: makeTimeStr(2), speech: "出品時は明るい背景で撮影し、タイトル先頭に『即購入OK・激レア』と入れるだけで売れやすくなります。" },
-        { title: "まとめ", time: makeTimeStr(3), speech: "これで販売価格は" + formatCurrency(sellPrice) + "。利益は" + formatCurrency(profit) + "になります。忘れないように保存してね！チャンネル登録・いいねをお願いします！" }
+        { title: "導入", time: makeTimeStr(0), speech: "トレカ開封でアドを取る！" + formatCurrency(purchasePrice) + "のパックから" + formatCurrency(profit) + "相当のレアカードを引くコツを解説！" },
+        { title: "ポイント解説", time: makeTimeStr(1), speech: "重要なのはパックの重さやシュリンクの状態。激レアカードは封入の仕様が異なります。" },
+        { title: "価値解説", time: makeTimeStr(2), speech: "引き当てたカードは海外でも大人気で、取引相場は現在" + formatCurrency(sellPrice) + "まで高騰しています！" },
+        { title: "まとめ", time: makeTimeStr(3), speech: "これで差し引きアドは" + formatCurrency(profit) + "。優良パックの見分け方は保存してね！チャンネル登録・いいねをお願いします！" }
       ],
       story: [
-        { title: "状況説明", time: makeTimeStr(0), speech: "資金ゼロ、物販知識ゼロのサラリーマンが、仕事帰りにふと立ち寄った店舗で見つけたスニーカー。" },
-        { title: "行動", time: makeTimeStr(1), speech: "財布に残った" + formatCurrency(purchasePrice) + "を握りしめて仕入れ。不安で押しつぶされそうでした。" },
-        { title: "結果", time: makeTimeStr(2), speech: "しかし、出品後すぐにスマホがチャリーン！売値はなんと" + formatCurrency(sellPrice) + "。鳥肌が立ちました。" },
-        { title: "結び", time: makeTimeStr(3), speech: "一撃利益は" + formatCurrency(profit) + "。この体験が人生を変える第一歩になりました。チャンネル登録・いいねをお願いします！" }
+        { title: "状況説明", time: makeTimeStr(0), speech: "お小遣い月3000円の学生が、コンビニで奇跡的にラスト1パックだけ残っていたのを見つけた。" },
+        { title: "行動", time: makeTimeStr(1), speech: "財布の中の" + formatCurrency(purchasePrice) + "を握りしめて購入。ただのノーマルカードだと思っていました。" },
+        { title: "結果", time: makeTimeStr(2), speech: "しかし、開封の瞬間、光り輝くウルトラレアが！相場はなんと" + formatCurrency(sellPrice) + "越え！" },
+        { title: "結び", time: makeTimeStr(3), speech: "手に入れたアドは" + formatCurrency(profit) + "。震えが止まりませんでした。チャンネル登録・いいねをお願いします！" }
       ]
     }
   };
@@ -830,7 +830,7 @@ async function exportDubbedVideo() {
     const a = document.createElement('a');
     a.style.display = 'none';
     a.href = url;
-    a.download = `吹き替え動画_${styleKey}_せどり.${extension}`;
+    a.download = `吹き替え動画_${styleKey}_カード開封.${extension}`;
     document.body.appendChild(a);
     a.click();
     
@@ -890,14 +890,13 @@ async function exportDubbedVideo() {
     const currentScene = scenes[sceneIdx];
 
     if (currentScene) {
-      // 1. 上部利益バッジの描画
+      // 1. 上部アド（利益）バッジの描画
       ctx.save();
       const formattedProfit = formatCurrency(currentVideoAnalysisData.profit);
       const formattedRate = `${currentVideoAnalysisData.profitRate}%`;
       
-      const hasExtra = (currentVideoAnalysisData.shipping > 0 || currentVideoAnalysisData.fee > 0);
-      const profitLabel = hasExtra ? '手残り利益' : '利益差額';
-      const badgeText = `${profitLabel} ${formattedProfit} (${formattedRate})`;
+      const profitLabel = '獲得アド';
+      const badgeText = `${profitLabel} ${formattedProfit} (還元率 ${formattedRate})`;
       
       ctx.font = '800 24px "Noto Sans JP", sans-serif';
       const textWidth = ctx.measureText(badgeText).width;
@@ -948,8 +947,8 @@ async function exportDubbedVideo() {
       } else if (sceneIdx === 1) {
         ctx.fillStyle = '#ffffff';
         ctx.font = '900 36px "Noto Sans JP", sans-serif';
-        ctx.strokeText('仕入れ原価', canvas.width / 2, centerY - 90);
-        ctx.fillText('仕入れ原価', canvas.width / 2, centerY - 90);
+        ctx.strokeText('パック代', canvas.width / 2, centerY - 90);
+        ctx.fillText('パック代', canvas.width / 2, centerY - 90);
         ctx.fillStyle = '#ef4444';
         ctx.font = '900 85px "Noto Sans JP", sans-serif';
         const formattedCost = formatCurrency(currentVideoAnalysisData.purchasePrice);
@@ -958,17 +957,18 @@ async function exportDubbedVideo() {
       } else if (sceneIdx === 2) {
         ctx.fillStyle = '#ffffff';
         ctx.font = '900 36px "Noto Sans JP", sans-serif';
-        ctx.strokeText(profitLabel, canvas.width / 2, centerY - 90);
-        ctx.fillText(profitLabel, canvas.width / 2, centerY - 90);
+        ctx.strokeText('カード相場', canvas.width / 2, centerY - 90);
+        ctx.fillText('カード相場', canvas.width / 2, centerY - 90);
         ctx.fillStyle = '#10b981';
         ctx.font = '900 85px "Noto Sans JP", sans-serif';
-        ctx.strokeText(`+${formattedProfit}!!`, canvas.width / 2, centerY + 10);
-        ctx.fillText(`+${formattedProfit}!!`, canvas.width / 2, centerY + 10);
+        const formattedSellPrice = formatCurrency(currentVideoAnalysisData.sellPrice);
+        ctx.strokeText(`${formattedSellPrice}`, canvas.width / 2, centerY + 10);
+        ctx.fillText(`${formattedSellPrice}`, canvas.width / 2, centerY + 10);
       } else if (sceneIdx === 3) {
         ctx.fillStyle = '#ffffff';
         ctx.font = '900 36px "Noto Sans JP", sans-serif';
-        ctx.strokeText('利益率', canvas.width / 2, centerY - 90);
-        ctx.fillText('利益率', canvas.width / 2, centerY - 90);
+        ctx.strokeText('還元率', canvas.width / 2, centerY - 90);
+        ctx.fillText('還元率', canvas.width / 2, centerY - 90);
         ctx.fillStyle = '#06b6d4';
         ctx.font = '900 85px "Noto Sans JP", sans-serif';
         ctx.strokeText(`${formattedRate}`, canvas.width / 2, centerY + 10);

@@ -1380,22 +1380,35 @@ async function preloadSpeechAudio() {
       progressBar.style.width = `${(i + 1) * 25}%`;
     }
 
-    try {
-      const encText = encodeURIComponent(text);
-      // Google Translate TTS と無料のCORSプロキシを利用
-      const targetUrl = `https://translate.google.com/translate_tts?ie=UTF-8&tl=ja&client=tw-ob&q=${encText}`;
-      const proxyUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(targetUrl)}`;
-      
-      const response = await fetch(proxyUrl);
-      if (!response.ok) throw new Error("Fetch failed");
-      const arrayBuffer = await response.arrayBuffer();
-      
-      const decodedBuffer = await new Promise((resolve, reject) => {
-        audioCtx.decodeAudioData(arrayBuffer, resolve, reject);
-      });
-      preloadedSpeechBuffers[i] = decodedBuffer;
-    } catch (err) {
-      console.error(`Failed to preload speech for scene ${i}:`, err);
+    let success = false;
+    const proxies = [
+      (t) => `https://corsproxy.io/?${encodeURIComponent(t)}`,
+      (t) => `https://api.allorigins.win/raw?url=${encodeURIComponent(t)}`
+    ];
+
+    for (const getProxyUrl of proxies) {
+      try {
+        const encText = encodeURIComponent(text);
+        const targetUrl = `https://translate.google.com/translate_tts?ie=UTF-8&tl=ja&client=tw-ob&q=${encText}`;
+        const proxyUrl = getProxyUrl(targetUrl);
+        
+        const response = await fetch(proxyUrl);
+        if (!response.ok) throw new Error(`HTTP error ${response.status}`);
+        const arrayBuffer = await response.arrayBuffer();
+        
+        const decodedBuffer = await new Promise((resolve, reject) => {
+          audioCtx.decodeAudioData(arrayBuffer, resolve, reject);
+        });
+        preloadedSpeechBuffers[i] = decodedBuffer;
+        success = true;
+        break; // 成功したらループを抜ける
+      } catch (err) {
+        console.warn(`Proxy fetch failed for scene ${i}:`, err);
+      }
+    }
+
+    if (!success) {
+      console.error(`Failed to preload speech for scene ${i} with all proxies.`);
       // フォールバック：再生可能な極小の無音バッファを生成してエラーを防止
       preloadedSpeechBuffers[i] = audioCtx.createBuffer(1, audioCtx.sampleRate * 0.5, audioCtx.sampleRate);
     }
