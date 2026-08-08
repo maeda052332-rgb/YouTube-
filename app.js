@@ -20,6 +20,11 @@ let currentAnalysisData = null;
 let currentUtterance = null;
 let currentPlayButton = null;
 
+// Web Audio 経由の読み上げ音声用
+let preloadedSpeechBuffers = null; // Array of 4 AudioBuffers
+let preloadedSpeechStyle = null;   // 現在ロードされているスタイル名
+let activeSpeechSourceNode = null; // 現在再生中の音声ノード
+
 // 金額フォーマット関数 (¥1,500のような形式に変換)
 function formatCurrency(amount) {
   const num = Number(amount);
@@ -971,6 +976,9 @@ async function startVideoPreview() {
   // AudioContext の初期化
   await initAudioContext();
 
+  // 読み上げ音声をプリロード
+  await preloadSpeechAudio();
+
   videoIsPlaying = true;
   const btnPlay = safeGetElement('btn-video-play');
   if (btnPlay) {
@@ -980,11 +988,15 @@ async function startVideoPreview() {
   const overlay = safeGetElement('canvas-play-overlay');
   if (overlay) overlay.classList.add('hidden');
 
-  // BGM ビート生成の開始
+  // BGM ビート生成の開始 (無効化済み)
   startSynthesizedBgm();
 
   // シーン音読の初回キック
-  speakCurrentSceneSpeech();
+  const initialSceneIdx = Math.floor(videoPlaybackTime / 8);
+  const initialOffset = videoPlaybackTime % 8;
+  if (initialSceneIdx < 4) {
+    playSceneSpeechWebAudio(initialSceneIdx, initialOffset);
+  }
 
   let lastTime = performance.now();
 
@@ -1001,7 +1013,7 @@ async function startVideoPreview() {
 
     // シーンが変わったら喋らせる
     if (newSceneIdx !== oldSceneIdx && newSceneIdx < 4) {
-      speakCurrentSceneSpeech();
+      playSceneSpeechWebAudio(newSceneIdx, 0);
     }
 
     if (videoPlaybackTime >= videoTotalDuration) {
@@ -1031,13 +1043,13 @@ function pauseVideoPreview() {
     window.speechSynthesis.cancel();
   }
 
+  stopSceneSpeechWebAudio();
   stopSynthesizedBgm();
 
   if (videoAnimationId) {
     cancelAnimationFrame(videoAnimationId);
   }
 }
-
 // 完全停止
 function stopVideoPreview() {
   pauseVideoPreview();
@@ -1330,36 +1342,110 @@ async function initAudioContext() {
   }
 }
 
-// BGM ビート生成
-function startSynthesizedBgm() {
-  if (!videoAudioContext) return;
-  if (videoBgmInterval) clearInterval(videoBgmInterval);
+// 読み上げ音声をAPI（CORSプロキシ経由）からプリロードしてAudioBufferにする
+async function preloadSpeechAudio() {
+  const activeTab = document.querySelector('.script-tab-btn.active');
+  const style = activeTab ? activeTab.getAttribute('data-style') : 'buzz';
+  
+  if (preloadedSpeechBuffers && preloadedSpeechStyle === style) {
+    return; // すでにロード済みの場合はスキップ
+  }
 
-  // 書き出し中は録画ノード、プレビュー再生時はスピーカー（destination）へ動的にルーティング
-  const dest = videoIsExporting ? videoAudioDestination : videoAudioContext.destination;
-  let beatCount = 0;
+  const scenes = getActiveScriptScenes();
+  if (!scenes) return;
 
-  // 0.5秒ごとにドラムキックとハイハットをシミュレーション
-  videoBgmInterval = setInterval(() => {
-    if (!videoIsPlaying && !videoIsExporting) return;
+  preloadedSpeechBuffers = [null, null, null, null];
+  preloadedSpeechStyle = style;
 
-    // ドラムキック (偶数拍)
-    if (beatCount % 2 === 0) {
-      triggerKick(videoAudioContext, dest);
+  const progressText = safeGetElement('export-progress-text');
+  const progressBar = safeGetElement('export-progress-bar');
+  const statusDiv = safeGetElement('export-status');
+  
+  const showLoading = !videoIsPlaying;
+  if (showLoading && statusDiv) {
+    statusDiv.classList.remove('hidden');
+  }
+
+  const audioCtx = videoAudioContext || new (window.AudioContext || window.webkitAudioContext)();
+  if (!videoAudioContext) {
+    videoAudioContext = audioCtx;
+  }
+
+  for (let i = 0; i < 4; i++) {
+    const text = scenes[i].speech;
+    if (showLoading && progressText) {
+      progressText.textContent = `音声（ナレーション）生成中 (${i + 1}/4)...`;
+    }
+    if (showLoading && progressBar) {
+      progressBar.style.width = `${(i + 1) * 25}%`;
     }
 
-    // ハイハット (全拍)
-    triggerHihat(videoAudioContext, dest);
+    try {
+      const encText = encodeURIComponent(text);
+      // Google Translate TTS と無料のCORSプロキシを利用
+      const targetUrl = `https://translate.google.com/translate_tts?ie=UTF-8&tl=ja&client=tw-ob&q=${encText}`;
+      const proxyUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(targetUrl)}`;
+      
+      const response = await fetch(proxyUrl);
+      if (!response.ok) throw new Error("Fetch failed");
+      const arrayBuffer = await response.arrayBuffer();
+      
+      const decodedBuffer = await new Promise((resolve, reject) => {
+        audioCtx.decodeAudioData(arrayBuffer, resolve, reject);
+      });
+      preloadedSpeechBuffers[i] = decodedBuffer;
+    } catch (err) {
+      console.error(`Failed to preload speech for scene ${i}:`, err);
+      // フォールバック：再生可能な極小の無音バッファを生成してエラーを防止
+      preloadedSpeechBuffers[i] = audioCtx.createBuffer(1, audioCtx.sampleRate * 0.5, audioCtx.sampleRate);
+    }
+  }
 
-    beatCount++;
-  }, 500);
+  if (showLoading && statusDiv && !videoIsExporting) {
+    statusDiv.classList.add('hidden');
+  }
+}
+
+// プリロードしたWeb Audio音声バッファを再生
+function playSceneSpeechWebAudio(sceneIdx, offsetSec = 0) {
+  if (!videoAudioContext || !preloadedSpeechBuffers || !preloadedSpeechBuffers[sceneIdx]) return;
+
+  stopSceneSpeechWebAudio();
+
+  const buffer = preloadedSpeechBuffers[sceneIdx];
+  const sourceNode = videoAudioContext.createBufferSource();
+  sourceNode.buffer = buffer;
+
+  // 書き出し中は録音用ノード、プレビュー再生時はスピーカーへルーティング
+  const dest = videoIsExporting ? videoAudioDestination : videoAudioContext.destination;
+  sourceNode.connect(dest);
+
+  if (offsetSec < buffer.duration) {
+    sourceNode.start(0, offsetSec);
+  }
+  
+  activeSpeechSourceNode = sourceNode;
+}
+
+// 再生中のWeb Audio音声を停止
+function stopSceneSpeechWebAudio() {
+  if (activeSpeechSourceNode) {
+    try {
+      activeSpeechSourceNode.stop();
+    } catch (e) {
+      // すでに停止している場合は無視
+    }
+    activeSpeechSourceNode = null;
+  }
+}
+
+// BGM ビート生成
+function startSynthesizedBgm() {
+  // BGM不要のため無効化
 }
 
 function stopSynthesizedBgm() {
-  if (videoBgmInterval) {
-    clearInterval(videoBgmInterval);
-    videoBgmInterval = null;
-  }
+  // BGM不要のため無効化
 }
 
 // ドラムキックシンセ
@@ -1452,6 +1538,9 @@ async function exportVideoAsFile() {
   // 現在の再生を停止
   stopVideoPreview();
   await initAudioContext();
+  
+  // 読み上げ音声をプリロード (すでにロードされていればスキップ)
+  await preloadSpeechAudio();
 
   videoIsExporting = true;
   videoRecordedChunks = [];
@@ -1523,6 +1612,7 @@ async function exportVideoAsFile() {
   };
 
   videoRecorder.onstop = () => {
+    stopSceneSpeechWebAudio();
     const blob = new Blob(videoRecordedChunks, { type: videoRecorder.mimeType || 'video/webm' });
     const url = URL.createObjectURL(blob);
 
@@ -1558,11 +1648,14 @@ async function exportVideoAsFile() {
   videoRecorder.start();
   startSynthesizedBgm();
 
+  let lastExportSceneIdx = -1;
+
   // シーン進行に沿ってプログレスバーをアニメーション更新
   const exportStartTime = performance.now();
   const timer = setInterval(() => {
     if (!videoIsExporting) {
       clearInterval(timer);
+      stopSceneSpeechWebAudio();
       return;
     }
     const elapsed = (performance.now() - exportStartTime) / 1000;
@@ -1575,8 +1668,15 @@ async function exportVideoAsFile() {
     videoPlaybackTime = elapsed;
     const currentSceneIdx = Math.floor(videoPlaybackTime / 8);
 
+    // シーンが変わったら声を再生する (Web Audio 録音用ノードへ出力)
+    if (currentSceneIdx !== lastExportSceneIdx && currentSceneIdx < 4) {
+      playSceneSpeechWebAudio(currentSceneIdx, 0);
+      lastExportSceneIdx = currentSceneIdx;
+    }
+
     if (videoPlaybackTime >= videoTotalDuration) {
       clearInterval(timer);
+      stopSceneSpeechWebAudio();
       videoRecorder.stop();
       return;
     }
