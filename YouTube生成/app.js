@@ -99,12 +99,23 @@ function setupUploadMechanics() {
   }, false);
 
   // 領域クリックでファイル選択ダイアログを開く
-  dropAreaA.addEventListener('click', () => {
+  dropAreaA.addEventListener('click', (e) => {
+    if (e.target === fileInputA) return;
     fileInputA.click();
   });
 
-  dropAreaB.addEventListener('click', () => {
+  dropAreaB.addEventListener('click', (e) => {
+    if (e.target === fileInputB) return;
     fileInputB.click();
+  });
+
+  // ファイル入力要素でのクリックバブリングを防いで、クリックイベントの無限ループ（再帰）を防止する
+  fileInputA.addEventListener('click', (e) => {
+    e.stopPropagation();
+  });
+
+  fileInputB.addEventListener('click', (e) => {
+    e.stopPropagation();
   });
 
   // ファイルインプットのクリックによる選択
@@ -303,6 +314,9 @@ async function executeScriptGenerationFlow() {
     resultData.profitRate = resultData.sellPrice > 0 ? Math.round((resultData.profit / resultData.sellPrice) * 100) : 0;
   }
 
+  // チャンネル登録・いいねをお願いしますを強制適用
+  enforceEndComment(resultData);
+
   await delay(800);
   await changeStepState('step-4', 'completed', 100);
   await delay(500);
@@ -348,128 +362,115 @@ function simulateHeuristicsAnalysis() {
   const matchA = uploadedFileNameA.match(/\d+/);
   if (matchA && matchA[0]) {
     const val = parseInt(matchA[0], 10);
-    if (val >= 300) sellPrice = val;
+    if (val > 1000) sellPrice = val;
   }
 
   // 仕入れファイル名から金額抽出
   const matchB = uploadedFileNameB.match(/\d+/);
   if (matchB && matchB[0]) {
     const val = parseInt(matchB[0], 10);
-    if (val >= 100) purchasePrice = val;
+    if (val > 100 && val < sellPrice) purchasePrice = val;
   }
 
-  // 粗利を強制的にプラスにする補正
-  if (purchasePrice >= sellPrice) {
-    purchasePrice = Math.round(sellPrice * 0.35);
-  }
+  const profit = sellPrice - purchasePrice;
+  const profitRate = Math.round((profit / sellPrice) * 100);
 
-  // 送料や手数料の勝手な推測を廃止
-  const shipping = 0;
-  const feeRate = 0;
-  const fee = 0;
-  const profit = sellPrice - purchasePrice; // 単純な販売差額
-  const profitRate = sellPrice > 0 ? Math.round((profit / sellPrice) * 100) : 0;
+  const fSell = formatCurrency(sellPrice);
+  const fCost = formatCurrency(purchasePrice);
+  const fProfit = formatCurrency(profit);
+
+  // デモ用の送料・手数料を設定
+  const fShipping = formatCurrency(750);
+  const fFee = formatCurrency(Math.round(sellPrice * 0.1));
 
   return {
     productName,
     sellPrice,
     purchasePrice,
-    shipping,
-    feeRate,
-    fee,
+    shipping: 750,
+    fee: Math.round(sellPrice * 0.1),
     profit,
     profitRate,
-    scripts: generateDemoScriptTemplates(productName, sellPrice, purchasePrice, shipping, fee, profit, profitRate)
-  };
-}
-
-// デモ用の台本テンプレート群
-function generateDemoScriptTemplates(productName, sellPrice, purchasePrice, shipping, fee, profit, profitRate) {
-  const fSell = formatCurrency(sellPrice);
-  const fCost = formatCurrency(purchasePrice);
-  const fProfit = formatCurrency(profit);
-  const fShipping = formatCurrency(shipping);
-  const fFee = formatCurrency(fee);
-
-  return {
-    buzz: [
-      {
-        title: "フック（冒頭の惹きつけ）",
-        time: "0〜3秒",
-        visual: "画面いっぱいに「一撃利益 " + fProfit + "」の赤い太文字テロップ！\\n次の瞬間、仕入れたばかりの " + productName + " を画面の目の前にドカン！と差し出す映像。\\nアップテンポでエネルギッシュなBGM開始。",
-        speech: "たった1回の取引で利益" + fProfit + "！メルカリで即売れした" + productName + "の仕入れの裏側を大公開！"
-      },
-      {
-        title: "問題提起（共感）",
-        time: "3〜12秒",
-        visual: "スマホでメルカリの画面を見ながら、残念そうに首を振る様子。\\n「せどりはもう稼げない？」という白いゴシック体の文字テロップ。",
-        speech: "せどりはオワコン、もう利益商品なんて見つからないって諦めてませんか？実は、仕入れる『特定の状態』を知るだけで、簡単に利益を独占できるんです。"
-      },
-      {
-        title: "解決策（仕入れ実録と利益内訳）",
-        time: "12〜25秒",
-        visual: "店舗での値札画像（" + fCost + "）と、今回の売値（" + fSell + "）の画像を左右に並べて表示。\\n送料 " + fShipping + " 、手数料 " + fFee + " などの内訳をグラフィカルに算出してアニメーションさせる。",
-        speech: "今回の仕入れはたったの" + fCost + "。送料と手数料を引いても、手残りの純利益は" + fProfit + "！利益率は驚異の" + profitRate + "%です！"
-      },
-      {
-        title: "クロージング（行動への誘導）",
-        time: "25〜35秒",
-        visual: "カメラに向かって手招きする笑顔の映像。\\nプロフィールのリンク先を拡大して、指差す矢印テロップを表示。BGMがフェードアウト。",
-        speech: "このジャンルの美味しい仕入れ基準をまとめた『初心者ロードマップ』は、プロフリンクで今だけ無料配付中！今のうちに受け取ってね！"
-      }
-    ],
-    educational: [
-      {
-        title: "フック＆イントロ",
-        time: "0〜5秒",
-        visual: "明るいオフィスの背景。話し手が笑顔でボードを指す。\\n緑色のテロップで「利益率" + profitRate + "%！アパレル物販の真実」を表示。",
-        speech: "再現性抜群！今回はメルカリで仕入れ" + fCost + "から利益" + fProfit + "を出した、具体的な商品選定テクニックを解説します。"
-      },
-      {
-        title: "ノウハウ解説",
-        time: "5〜18秒",
-        visual: "商品のコンディション部分（ソールやタグなど）をスライドでズーム。\\nタイトル文字入力のコツとして「状態、モデル名、限定」などのキーワードを目立たせる演出。",
-        speech: "重要なのはキーワード設計です。メルカリで検索されやすい『コラボ名』や『限定カラー』を商品名の先頭に記載するだけで、インプレッションは一気に3倍になります。"
-      },
-      {
-        title: "数字の裏付け",
-        time: "18〜32秒",
-        visual: "数値をグラフ化したスライドを表示。\\n仕入れ価格: " + fCost + "、売値: " + fSell + "、諸経費を計算した表。\\n中古品を簡単にメンテナンス（磨く作業）している1.5倍速の映像。",
-        speech: "今回の原価は" + fCost + "ですが、100均の消しゴムクリーナーでほんの1分磨いてから出品したことで、相場より約3,000円高く売ることに成功しました。"
-      },
-      {
-        title: "まとめとCTA",
-        time: "32〜45秒",
-        visual: "いいねとブックマーク（保存ボタン）を指し示すポップアップイラスト。\\n質問を促すコメントテロップ。",
-        speech: "後から仕入れ店舗で見返せるように、今のうちにこの動画を保存しておいてくださいね。詳しい質問はコメント欄で受付中です！"
-      }
-    ],
-    story: [
-      {
-        title: "オープニング",
-        time: "0〜6秒",
-        visual: "少し暗めの室内。スマホの画面を眺めながらため息をつく映像。\\n突然メルカリの売上通知音が「チャリーン！」と鳴り、表情がパッと明るくなる演出。",
-        speech: "副業を諦めかけていた平凡な会社員が、仕事帰りのわずか1時間で日給" + fProfit + "を稼ぎ出したリアルな一日。"
-      },
-      {
-        title: "過去の苦悩",
-        time: "6〜20秒",
-        visual: "駅のホームをうつむいて歩く姿。リサイクルショップの棚の前をうろうろして何も買えずに帰る過去の様子。\\n白黒の回想風エフェクト。",
-        speech: "手取り18万。毎日遅くまで働いても貯金は増えず、焦って物販を始めましたが、最初はどれを見ても赤字に見えて、仕入れができず挫折寸前でした。"
-      },
-      {
-        title: "ブレイクスルー",
-        time: "20〜40秒",
-        visual: "お店の棚の奥から今回の商品（" + productName + "）を宝物のように見つけ出す映像（カラーに戻る）。\\n仕入れ時の原価レシート（" + fCost + "）がポップアップ。出品直後に売れた履歴画面の表示。",
-        speech: "でも、リサーチの考え方を変えて見つけたのがこの" + productName + "。仕入れ原価" + fCost + "が、出品後わずか2時間で" + fSell + "で売れ、手元に" + fProfit + "残ったとき、本当に震えました。"
-      },
-      {
-        title: "未来への呼びかけ",
-        time: "40〜55秒",
-        visual: "パソコンに向かって前向きに作業している背中の映像。\\n画面下に「コメント欄に『副業』と入力」とアニメーション文字を表示。",
-        speech: "正しい知識さえ身につければ、人生は自分の手で変えられます。僕が初心者から月10万稼いだステップは、コメント欄に『副業』と書いてくれた方に個別に共有します！"
-      }
-    ]
+    scripts: {
+      buzz: [
+        {
+          title: "フック（冒頭の惹きつけ）",
+          time: "0〜3秒",
+          visual: "画面いっぱいに「一撃利益 " + fProfit + "」の赤い太文字テロップ！\\n次の瞬間、仕入れたばかりの " + productName + " を画面の目の前にドカン！と差し出す映像。\\nアップテンポでエネルギッシュなBGM開始。",
+          speech: "たった1回の取引で利益" + fProfit + "！メルカリで即売れした" + productName + "の仕入れの裏側を大公開！"
+        },
+        {
+          title: "問題提起（共感）",
+          time: "3〜12秒",
+          visual: "スマホでメルカリの画面を見ながら、残念そうに首を振る様子。\\n「せどりはもう稼げない？」という白いゴシック体の文字テロップ。",
+          speech: "せどりはオワコン、もう利益商品なんて見つからないって諦めてませんか？実は、仕入れる『特定の状態』を知るだけで、簡単に利益を独占できるんです。"
+        },
+        {
+          title: "解決策（仕入れ実録と利益内訳）",
+          time: "12〜25秒",
+          visual: "店舗での値札画像（" + fCost + "）と、今回の売値（" + fSell + "）の画像を左右に並べて表示。\\n送料 " + fShipping + " 、手数料 " + fFee + " などの内訳をグラフィカルに算出してアニメーションさせる。",
+          speech: "今回のお仕入れはたったの" + fCost + "。送料と手数料を引いても、手残りの純利益は" + fProfit + "！利益率は驚異の" + profitRate + "%です！"
+        },
+        {
+          title: "クロージング（行動への誘導）",
+          time: "25〜35秒",
+          visual: "カメラに向かって手招きする笑顔の映像。\\nプロフィールのリンク先を拡大して、指差す矢印テロップを表示。BGMがフェードアウト。",
+          speech: "このジャンルの美味しい仕入れ基準をまとめた『初心者ロードマップ』は、プロフリンクで今だけ無料配付中！今のうちに受け取ってね！チャンネル登録・いいねをお願いします！"
+        }
+      ],
+      educational: [
+        {
+          title: "フック＆イントロ",
+          time: "0〜5秒",
+          visual: "明るいオフィスの背景。話し手が笑顔でボードを指す。\\n緑色のテロップで「利益率" + profitRate + "%！アパレル物販の真実」を表示。",
+          speech: "再現性抜群！今回はメルカリで仕入れ" + fCost + "から利益" + fProfit + "を出した、具体的な商品選定テクニックを解説します。"
+        },
+        {
+          title: "ノウハウ解説",
+          time: "5〜18秒",
+          visual: "商品のコンディション部分（ソールやタグなど）をスライドでズーム。\\nタイトル文字入力のコツとして「状態、モデル名、限定」などのキーワードを目立たせる演出。",
+          speech: "重要なのはキーワード設計です。メルカリで検索されやすい『コラボ名』や『限定カラー』を商品名の先頭に記載するだけで、インプレッションは一気に3倍になります。"
+        },
+        {
+          title: "数字の裏付け",
+          time: "18〜32秒",
+          visual: "数値をグラフ化したスライドを表示。\\n仕入れ価格: " + fCost + "、売値: " + fSell + "、諸経費を計算した表。\\n中古品を簡単にメンテナンス（磨く作業）している1.5倍速の映像。",
+          speech: "今回の原価は" + fCost + "ですが、100均の消しゴムクリーナーでほんの1分磨いてから出品したことで、相場より約3,000円高く売ることに成功しました。"
+        },
+        {
+          title: "まとめとCTA",
+          time: "32〜45秒",
+          visual: "いいねとブックマーク（保存ボタン）を指し示すポップアップイラスト。\\n質問を促すコメントテロップ。",
+          speech: "後から仕入れ店舗で見返せるように、今のうちにこの動画を保存しておいてくださいね。詳しい質問はコメント欄で受付中です！チャンネル登録・いいねをお願いします！"
+        }
+      ],
+      story: [
+        {
+          title: "オープニング",
+          time: "0〜6秒",
+          visual: "少し暗めの室内。スマホの画面を眺めながらため息をつく映像。\\n突然メルカリの売上通知音が「チャリーン！」と鳴り、表情がパッと明るくなる演出。",
+          speech: "副業を諦めかけていた平凡な会社員が、仕事帰りのわずか1時間で日給" + fProfit + "を稼ぎ出したリアルな一日。"
+        },
+        {
+          title: "過去の苦悩",
+          time: "6〜20秒",
+          visual: "駅のホームをうつむいて歩く姿。リサイクルショップの棚の前をうろうろして何も買えずに帰る過去の様子。\\n白黒の回想風エフェクト。",
+          speech: "手取り18万。毎日遅くまで働いても貯金は増えず、焦って物販を始めましたが、最初はどれを見ても赤字に見えて、仕入れができず挫折寸前でした。"
+        },
+        {
+          title: "ブレイクスルー",
+          time: "20〜40秒",
+          visual: "お店の棚の奥から今回の商品（" + productName + "）を宝物のように見つけ出す映像（カラーに戻る）。\\n仕入れ時の原価レシート（" + fCost + "）がポップアップ。出品直後に売れた履歴画面の表示。",
+          speech: "でも、リサーチの考え方を変えて見つけたのがこの" + productName + "。仕入れ原価" + fCost + "が、出品後わずか2時間で" + fSell + "で売れ、手元に" + fProfit + "残ったとき、本当に震えました。"
+        },
+        {
+          title: "未来への呼びかけ",
+          time: "40〜55秒",
+          visual: "パソコンに向かって前向きに作業している背中の映像。\\n画面下に「コメント欄に『副業』と入力」とアニメーション文字を表示。",
+          speech: "正しい知識さえ身につければ、人生は自分の手で変えられます。僕が初心者から月10万稼いだステップは、コメント欄に『副業』と書いてくれた方に個別に共有します！チャンネル登録・いいねをお願いします！"
+        }
+      ]
+    }
   };
 }
 
@@ -555,7 +556,7 @@ async function fetchFromGeminiAPI(apiKey, base64ImageA, base64ImageB) {
   }
 }
 
-各スクリプトスタイルはそれぞれ4個の短いシーンで構成してください。
+各スクリプトスタイルはそれぞれ4個の短いシーンで構成してください。また、すべてのスクリプトスタイルにおいて、4番目（最後）のシーンのセリフ（speech）の末尾には、必ず視聴者にチャンネル登録といいねを促すフレーズとして「チャンネル登録・いいねをお願いします！」を必ず含めてください。
 `;
 
   const requestBody = {
@@ -582,8 +583,7 @@ async function fetchFromGeminiAPI(apiKey, base64ImageA, base64ImageB) {
   });
 
   if (!response.ok) {
-    const errorText = await response.text();
-    throw new Error(`Gemini API returned status ${response.status}: ${errorText}`);
+    throw new Error(`Gemini API returned status ${response.status}`);
   }
 
   const jsonResult = await response.json();
@@ -591,52 +591,87 @@ async function fetchFromGeminiAPI(apiKey, base64ImageA, base64ImageB) {
   return JSON.parse(rawText);
 }
 
-// 台本結果カードの表示
+// チャンネル登録・いいねを動画の最後に必ず入れるための強制適用関数
+function enforceEndComment(data) {
+  if (!data || !data.scripts) return;
+  const phrase = "チャンネル登録・いいねをお願いします！";
+  for (const style in data.scripts) {
+    const scenes = data.scripts[style];
+    if (scenes && scenes.length === 4) {
+      let speech = scenes[3].speech;
+      
+      // 類似の既存フレーズを除去
+      speech = speech.replace(/チャンネル登録[・と]?高評価[も]?よろし[くお]?[ね願い]?[しま]?す?[！]?/, '');
+      speech = speech.replace(/チャンネル登録[・と]?高評価[も]?忘れずに[！]?/, '');
+      speech = speech.replace(/チャンネル登録[・と]?いいね[も]?よろし[くお]?[ね願い]?[しま]?す?[！]?/, '');
+      
+      speech = speech.trim();
+      
+      if (!speech.includes("チャンネル登録") || !speech.includes("いいね")) {
+        if (speech.length > 0 && !speech.endsWith('！') && !speech.endsWith('。') && !speech.endsWith('?')) {
+          speech += '！';
+        }
+        speech += phrase;
+      }
+      scenes[3].speech = speech;
+    }
+  }
+}
+
+// 解析結果台本表示
 function displayScriptOutput(data) {
   currentAnalysisData = data;
-  const summaryArea = safeGetElement('script-analysis-summary');
+  
+  // 利益と利益率を強制再計算 (バグ回避。送料・手数料があれば考慮)
+  const shipping = Number(data.shipping) || 0;
+  const fee = Number(data.fee) || 0;
+  currentAnalysisData.profit = data.sellPrice - data.purchasePrice - shipping - fee;
+  currentAnalysisData.profitRate = data.sellPrice > 0 ? Math.round((currentAnalysisData.profit / data.sellPrice) * 100) : 0;
+
   const outputCard = safeGetElement('script-output-card');
   const alertEl = safeGetElement('success-alert');
 
   if (outputCard) outputCard.classList.remove('hidden');
   if (alertEl) alertEl.style.display = 'flex';
 
-  if (summaryArea) {
-    const profitClass = data.profit >= 0 ? 'profit-positive' : 'profit-negative';
-    summaryArea.innerHTML = `
-      <div class="analysis-badge">
-        <span class="badge-label"><i class="fa-solid fa-tag"></i> 判定商品名</span>
-        <span class="badge-value" style="font-size: 0.95rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="${data.productName}">${data.productName}</span>
-      </div>
-      <div class="analysis-badge">
-        <span class="badge-label"><i class="fa-solid fa-basket-shopping"></i> 販売価格</span>
-        <span class="badge-value">${formatCurrency(data.sellPrice)}</span>
-      </div>
-      <div class="analysis-badge">
-        <span class="badge-label"><i class="fa-solid fa-yen-sign"></i> 仕入れ価格</span>
-        <span class="badge-value">${formatCurrency(data.purchasePrice)}</span>
-      </div>
-      ${(data.shipping > 0 || data.fee > 0) ? `
-      <div class="analysis-badge">
-        <span class="badge-label"><i class="fa-solid fa-truck-fast"></i> 送料・手数料</span>
-        <span class="badge-value" style="font-size: 0.95rem; font-weight: 600; color: var(--text-main);">
-          ${formatCurrency(data.shipping)} + ${formatCurrency(data.fee)}
-        </span>
-      </div>
-      ` : ''}
-      <div class="analysis-badge">
-        <span class="badge-label"><i class="fa-solid fa-hand-holding-dollar"></i> ${(data.shipping > 0 || data.fee > 0) ? '手残り利益' : '利益額'} (利益率)</span>
-        <span class="badge-value ${profitClass}">
-          ${formatCurrency(data.profit)} <span style="font-size: 0.85rem; font-weight: bold; color: inherit;">(${data.profitRate}%)</span>
-        </span>
-      </div>
-    `;
-  }
+  // 計算結果バッジの表示
+  renderAnalysisSummary();
 
-  // デフォルトで「インパクト重視(buzz)」をレンダリングする
+  // タブのデフォルト表示
   const activeTab = document.querySelector('.script-tab-btn.active');
   const style = activeTab ? activeTab.getAttribute('data-style') : 'buzz';
-  renderScriptViewer(data.scripts[style]);
+  renderScriptViewer(currentAnalysisData.scripts[style]);
+}
+
+// 計算サマリーバッジのレンダリング
+function renderAnalysisSummary() {
+  const container = safeGetElement('script-analysis-summary');
+  if (!container || !currentAnalysisData) return;
+
+  const profitColor = currentAnalysisData.profit >= 0 ? '#10b981' : '#ef4444';
+  
+  container.innerHTML = `
+    <div class="summary-badge">
+      <span class="badge-label">推測商品名</span>
+      <span class="badge-val" title="${currentAnalysisData.productName}">${currentAnalysisData.productName || '不明'}</span>
+    </div>
+    <div class="summary-badge">
+      <span class="badge-label">販売価格</span>
+      <span class="badge-val">${formatCurrency(currentAnalysisData.sellPrice)}</span>
+    </div>
+    <div class="summary-badge">
+      <span class="badge-label">仕入れ原価</span>
+      <span class="badge-val">${formatCurrency(currentAnalysisData.purchasePrice)}</span>
+    </div>
+    <div class="summary-badge" style="border-left: 2px solid ${profitColor}; background: rgba(16, 185, 129, 0.04);">
+      <span class="badge-label" style="color: ${profitColor};">粗利益額</span>
+      <span class="badge-val" style="color: ${profitColor}; font-weight: 800;">${formatCurrency(currentAnalysisData.profit)}</span>
+    </div>
+    <div class="summary-badge">
+      <span class="badge-label">利益率</span>
+      <span class="badge-val" style="color: ${profitColor}; font-weight: 800;">${currentAnalysisData.profitRate}%</span>
+    </div>
+  `;
 }
 
 // 台本シーンリストのHTML出力
@@ -788,141 +823,106 @@ function copyEntireScript(scenes, styleKey) {
   });
 
   navigator.clipboard.writeText(text).then(() => {
-    alert('台本全体の原稿（映像演出＋ナレーション）をクリップボードにコピーしました！');
-  }).catch(err => {
-    alert('コピーに失敗しました: ' + err.message);
+    alert('全台本のテキストを一括コピーしました。');
   });
 }
 
 // ==========================================
-// 6. 動画自動生成・連携機能 コアロジック (追加)
+// 動画ジェネレーター (Canvasベース・音声・BGM合成)
 // ==========================================
 
-let videoPreloadedImages = null;
+let videoPlaybackTime = 0;
 let videoIsPlaying = false;
-let videoPlaybackTime = 0; // 現在の再生位置（秒）
-const videoTotalDuration = 32; // 4シーン x 各8秒 = 32秒固定
+let videoIsExporting = false;
 let videoAnimationId = null;
+let videoTotalDuration = 32; // 8秒×4シーン
+let videoPreloadedImages = null; // imgA, imgB
 
-// Web Audio API 関連
+// Web Audio API によるシンセBGM
 let videoAudioContext = null;
 let videoAudioDestination = null;
 let videoBgmInterval = null;
-
-// MediaRecorder 関連
-let videoRecorder = null;
 let videoRecordedChunks = [];
-let videoIsExporting = false;
+let videoRecorder = null;
 
-// 外部動画編集アプリ連携用イベントの登録
+// モーダルイベント
 function setupVideoGeneratorListeners() {
-  const btnOpen = safeGetElement('btn-open-video-generator');
-  const btnClose = safeGetElement('btn-close-video-modal');
-  const overlay = safeGetElement('video-modal-overlay');
+  const btnOpenModal = safeGetElement('btn-open-video-generator');
+  const btnCloseModal = safeGetElement('btn-close-video-modal');
+  const modal = safeGetElement('video-modal-overlay');
   
   const btnPlay = safeGetElement('btn-video-play');
   const btnExport = safeGetElement('btn-video-export');
+  const overlayPlay = safeGetElement('canvas-play-overlay');
+  
   const btnDownloadSrt = safeGetElement('btn-download-srt');
   const btnDownloadJson = safeGetElement('btn-download-json');
-  const canvasOverlay = safeGetElement('canvas-play-overlay');
 
-  if (!btnOpen || !overlay) return;
-
-  // モーダルを開く
-  btnOpen.addEventListener('click', async () => {
-    if (!uploadedImageDataA || !uploadedImageDataB) {
-      alert('動画を生成するには、実績画像と仕入れ原価画像の両方をアップロードしてください。');
-      return;
-    }
-    
-    overlay.classList.remove('hidden');
-    
-    // 画像のプリロード
-    try {
-      showCanvasLoading(true);
-      videoPreloadedImages = await preloadVideoImages();
-      showCanvasLoading(false);
-      resetVideoState();
-      drawStaticPreview();
-    } catch (err) {
-      console.error(err);
-      alert('画像の読み込みに失敗しました。');
-      showCanvasLoading(false);
-    }
-  });
-
-  // モーダルを閉じる
-  if (btnClose) {
-    btnClose.addEventListener('click', () => {
-      stopVideoPreview();
-      overlay.classList.add('hidden');
-    });
+  if (btnOpenModal) {
+    btnOpenModal.onclick = async () => {
+      if (!currentAnalysisData) return;
+      if (modal) modal.classList.remove('hidden');
+      
+      // 画像プリロードの実行
+      try {
+        videoPreloadedImages = await preloadVideoAssets();
+        resetVideoState();
+        drawStaticPreview();
+      } catch (err) {
+        console.error(err);
+        alert('画像の読み込みに失敗しました。');
+      }
+    };
   }
 
-  // 再生ボタン
+  if (btnCloseModal) {
+    btnCloseModal.onclick = () => {
+      stopVideoPreview();
+      if (modal) modal.classList.add('hidden');
+    };
+  }
+
   if (btnPlay) {
-    btnPlay.addEventListener('click', () => {
+    btnPlay.onclick = () => {
       if (videoIsPlaying) {
         pauseVideoPreview();
       } else {
         startVideoPreview();
       }
-    });
+    };
   }
 
-  // キャンバスオーバーレイのクリックで再生
-  if (canvasOverlay) {
-    canvasOverlay.addEventListener('click', () => {
+  if (overlayPlay) {
+    overlayPlay.onclick = () => {
       startVideoPreview();
-    });
+    };
   }
 
-  // 動画エクスポート
   if (btnExport) {
-    btnExport.addEventListener('click', () => {
+    btnExport.onclick = () => {
       exportVideoAsFile();
-    });
+    };
   }
 
-  // SRT字幕ダウンロード
   if (btnDownloadSrt) {
-    btnDownloadSrt.addEventListener('click', () => {
+    btnDownloadSrt.onclick = () => {
       downloadSrtFile();
-    });
+    };
   }
 
-  // JSONダウンロード
   if (btnDownloadJson) {
-    btnDownloadJson.addEventListener('click', () => {
+    btnDownloadJson.onclick = () => {
       downloadJsonScript();
-    });
+    };
   }
 }
 
-// キャンバス内のローディング表示
-function showCanvasLoading(show) {
-  const canvas = safeGetElement('video-canvas');
-  if (!canvas) return;
-  const ctx = canvas.getContext('2d');
-  
-  ctx.fillStyle = '#020617';
-  ctx.fillRect(0, 0, canvas.width, canvas.height);
-  
-  if (show) {
-    ctx.fillStyle = '#ffffff';
-    ctx.font = 'bold 36px "Noto Sans JP", sans-serif';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillText('素材画像をロード中...', canvas.width / 2, canvas.height / 2);
-  }
-}
-
-// 画像プリロード
-function preloadVideoImages() {
+// 画像のプリロード
+function preloadVideoAssets() {
   return new Promise((resolve, reject) => {
-    let loadedCount = 0;
     const imgA = new Image();
     const imgB = new Image();
+    let loadedCount = 0;
     
     const checkLoaded = () => {
       loadedCount++;
@@ -1469,17 +1469,20 @@ async function exportVideoAsFile() {
 
   // キャンバスストリーム (30fps)
   const canvasStream = canvas.captureStream(30);
-  const mixedStream = new MediaStream();
+  const tracks = [];
   
   // 映像トラックの追加
-  canvasStream.getVideoTracks().forEach(track => mixedStream.addTrack(track));
+  canvasStream.getVideoTracks().forEach(track => tracks.push(track));
   
   // 音声トラックの追加 (Web Audio から)
   if (videoAudioDestination) {
     videoAudioDestination.stream.getAudioTracks().forEach(track => {
-      mixedStream.addTrack(track);
+      tracks.push(track);
     });
   }
+
+  // スマホ対応：MediaStream作成時にトラック配列を直接渡すことで音声欠落を防ぎます
+  const mixedStream = new MediaStream(tracks);
   
   // MediaRecorder インスタンス生成 (スマホ・PC互換性を高めるため MP4/AAC 形式を最優先)
   let options = { mimeType: 'video/mp4;codecs=avc1,mp4a' };
@@ -1506,7 +1509,11 @@ async function exportVideoAsFile() {
   } catch (e) {
     console.error('MediaRecorderの初期化に失敗しました。デフォルト設定を使います:', e);
     videoRecorder = new MediaRecorder(mixedStream);
-    extension = 'webm';
+    if (videoRecorder.mimeType && videoRecorder.mimeType.includes('mp4')) {
+      extension = 'mp4';
+    } else {
+      extension = 'webm';
+    }
   }
   
   videoRecorder.ondataavailable = (event) => {
@@ -1550,46 +1557,49 @@ async function exportVideoAsFile() {
   // 録画開始
   videoRecorder.start();
   startSynthesizedBgm();
-  
-  // レンダリングループ (実時間で回す)
-  let lastTime = performance.now();
-  videoPlaybackTime = 0;
-  
-  function exportLoop(now) {
-    const delta = (now - lastTime) / 1000;
-    lastTime = now;
+
+  // シーン進行に沿ってプログレスバーをアニメーション更新
+  const exportStartTime = performance.now();
+  const timer = setInterval(() => {
+    if (!videoIsExporting) {
+      clearInterval(timer);
+      return;
+    }
+    const elapsed = (performance.now() - exportStartTime) / 1000;
+    const progress = Math.min((elapsed / videoTotalDuration) * 100, 99);
     
-    videoPlaybackTime += delta;
-    
-    // 進捗表示
-    const progress = Math.min((videoPlaybackTime / videoTotalDuration) * 100, 100);
     if (progressBar) progressBar.style.width = progress + '%';
     if (progressText) progressText.textContent = Math.round(progress) + '%';
     
+    // 映像・音声合成用のフレーム描画とシーン切り替え
+    videoPlaybackTime = elapsed;
+    const currentSceneIdx = Math.floor(videoPlaybackTime / 8);
+    
     if (videoPlaybackTime >= videoTotalDuration) {
-      // 終了
+      clearInterval(timer);
       videoRecorder.stop();
       return;
     }
     
     renderFrameAtTime(videoPlaybackTime);
-    
-    requestAnimationFrame(exportLoop);
-  }
-  
-  requestAnimationFrame(exportLoop);
+  }, 33); // 約30fps
 }
 
 // SRT字幕ファイルのダウンロード
 function downloadSrtFile() {
-  const scenes = getActiveScriptScenes();
+  const totalDuration = videoTotalDuration;
+  const stepSec = totalDuration / 4;
+  
+  const activeTab = document.querySelector('.script-tab-btn.active');
+  const styleKey = activeTab ? activeTab.getAttribute('data-style') : 'buzz';
+  const scenes = currentAnalysisData ? currentAnalysisData.scripts[styleKey] : null;
   if (!scenes) return;
   
   let srtContent = '';
   
   scenes.forEach((scene, index) => {
-    const startSec = index * 8;
-    const endSec = (index + 1) * 8;
+    const startSec = index * stepSec;
+    const endSec = (index + 1) * stepSec;
     
     const formatTime = (totalSec) => {
       const hrs = Math.floor(totalSec / 3600).toString().padStart(2, '0');
@@ -1609,8 +1619,6 @@ function downloadSrtFile() {
   const a = document.createElement('a');
   a.href = url;
   
-  const activeTab = document.querySelector('.script-tab-btn.active');
-  const styleKey = activeTab ? activeTab.getAttribute('data-style') : 'buzz';
   const prodNameClean = currentAnalysisData.productName.replace(/[\\/:*?"<>|]/g, '');
   a.download = `字幕_${styleKey}_${prodNameClean}.srt`;
   
