@@ -165,7 +165,7 @@ function handleFileSelected(file, side) {
     if (side === 'A') {
       uploadedImageDataA = base64Data;
       uploadedFileNameA = file.name;
-      
+
       const img = safeGetElement('preview-image-a');
       if (img) img.src = base64Data;
       const preview = safeGetElement('preview-container-a');
@@ -175,7 +175,7 @@ function handleFileSelected(file, side) {
     } else {
       uploadedImageDataB = base64Data;
       uploadedFileNameB = file.name;
-      
+
       const img = safeGetElement('preview-image-b');
       if (img) img.src = base64Data;
       const preview = safeGetElement('preview-container-b');
@@ -183,7 +183,7 @@ function handleFileSelected(file, side) {
       const placeholder = safeGetElement('placeholder-b');
       if (placeholder) placeholder.classList.add('hidden');
     }
-    
+
     updateGenerateButtonState();
   };
 }
@@ -322,7 +322,7 @@ async function executeScriptGenerationFlow() {
   await delay(500);
 
   if (statusCard) statusCard.classList.add('hidden');
-  
+
   displayScriptOutput(resultData);
 }
 
@@ -599,14 +599,14 @@ function enforceEndComment(data) {
     const scenes = data.scripts[style];
     if (scenes && scenes.length === 4) {
       let speech = scenes[3].speech;
-      
+
       // 類似の既存フレーズを除去
       speech = speech.replace(/チャンネル登録[・と]?高評価[も]?よろし[くお]?[ね願い]?[しま]?す?[！]?/, '');
       speech = speech.replace(/チャンネル登録[・と]?高評価[も]?忘れずに[！]?/, '');
       speech = speech.replace(/チャンネル登録[・と]?いいね[も]?よろし[くお]?[ね願い]?[しま]?す?[！]?/, '');
-      
+
       speech = speech.trim();
-      
+
       if (!speech.includes("チャンネル登録") || !speech.includes("いいね")) {
         if (speech.length > 0 && !speech.endsWith('！') && !speech.endsWith('。') && !speech.endsWith('?')) {
           speech += '！';
@@ -621,7 +621,7 @@ function enforceEndComment(data) {
 // 解析結果台本表示
 function displayScriptOutput(data) {
   currentAnalysisData = data;
-  
+
   // 利益と利益率を強制再計算 (バグ回避。送料・手数料があれば考慮)
   const shipping = Number(data.shipping) || 0;
   const fee = Number(data.fee) || 0;
@@ -649,7 +649,7 @@ function renderAnalysisSummary() {
   if (!container || !currentAnalysisData) return;
 
   const profitColor = currentAnalysisData.profit >= 0 ? '#10b981' : '#ef4444';
-  
+
   container.innerHTML = `
     <div class="summary-badge">
       <span class="badge-label">推測商品名</span>
@@ -686,7 +686,7 @@ function renderScriptViewer(scenes) {
   currentPlayButton = null;
 
   let html = `<div class="scene-list">`;
-  
+
   scenes.forEach((scene, index) => {
     html += `
       <div class="scene-card">
@@ -749,14 +749,14 @@ function handleSpeechSynthesisToggle(idx, text, button) {
   // 既に再生中の場合
   if (window.speechSynthesis.speaking) {
     window.speechSynthesis.cancel();
-    
+
     // 同じボタンを押したなら停止のみ
     if (currentPlayButton === button) {
       setVoiceButtonPlayingState(button, false);
       currentPlayButton = null;
       return;
     }
-    
+
     // 別のボタンなら、前のボタンの状態を元に戻す
     if (currentPlayButton) {
       setVoiceButtonPlayingState(currentPlayButton, false);
@@ -850,11 +850,11 @@ function setupVideoGeneratorListeners() {
   const btnOpenModal = safeGetElement('btn-open-video-generator');
   const btnCloseModal = safeGetElement('btn-close-video-modal');
   const modal = safeGetElement('video-modal-overlay');
-  
+
   const btnPlay = safeGetElement('btn-video-play');
   const btnExport = safeGetElement('btn-video-export');
   const overlayPlay = safeGetElement('canvas-play-overlay');
-  
+
   const btnDownloadSrt = safeGetElement('btn-download-srt');
   const btnDownloadJson = safeGetElement('btn-download-json');
 
@@ -862,7 +862,7 @@ function setupVideoGeneratorListeners() {
     btnOpenModal.onclick = async () => {
       if (!currentAnalysisData) return;
       if (modal) modal.classList.remove('hidden');
-      
+
       // 画像プリロードの実行
       try {
         videoPreloadedImages = await preloadVideoAssets();
@@ -923,19 +923,19 @@ function preloadVideoAssets() {
     const imgA = new Image();
     const imgB = new Image();
     let loadedCount = 0;
-    
+
     const checkLoaded = () => {
       loadedCount++;
       if (loadedCount === 2) {
         resolve({ imgA, imgB });
       }
     };
-    
+
     imgA.onload = checkLoaded;
     imgA.onerror = () => reject(new Error("Image A loading failed"));
     imgB.onload = checkLoaded;
     imgB.onerror = () => reject(new Error("Image B loading failed"));
-    
+
     imgA.src = uploadedImageDataA;
     imgB.src = uploadedImageDataB;
   });
@@ -953,7 +953,7 @@ function resetVideoState() {
 function drawStaticPreview() {
   const canvas = safeGetElement('video-canvas');
   if (!canvas || !videoPreloadedImages) return;
-  
+
   renderFrameAtTime(0);
   const overlay = safeGetElement('canvas-play-overlay');
   if (overlay) overlay.classList.remove('hidden');
@@ -962,7 +962,7 @@ function drawStaticPreview() {
 // 再生開始
 async function startVideoPreview() {
   if (videoIsExporting) return;
-  
+
   // 音声合成の中断
   if (window.speechSynthesis) {
     window.speechSynthesis.cancel();
@@ -970,13 +970,13 @@ async function startVideoPreview() {
 
   // AudioContext の初期化
   await initAudioContext();
-  
+
   videoIsPlaying = true;
   const btnPlay = safeGetElement('btn-video-play');
   if (btnPlay) {
     btnPlay.innerHTML = '<i class="fa-solid fa-pause"></i> 一時停止';
   }
-  
+
   const overlay = safeGetElement('canvas-play-overlay');
   if (overlay) overlay.classList.add('hidden');
 
@@ -987,13 +987,13 @@ async function startVideoPreview() {
   speakCurrentSceneSpeech();
 
   let lastTime = performance.now();
-  
+
   function animLoop(now) {
     if (!videoIsPlaying) return;
-    
+
     const delta = (now - lastTime) / 1000;
     lastTime = now;
-    
+
     // 時間を進める
     const oldSceneIdx = Math.floor(videoPlaybackTime / 8);
     videoPlaybackTime += delta;
@@ -1003,19 +1003,19 @@ async function startVideoPreview() {
     if (newSceneIdx !== oldSceneIdx && newSceneIdx < 4) {
       speakCurrentSceneSpeech();
     }
-    
+
     if (videoPlaybackTime >= videoTotalDuration) {
       // 再生終了
       stopVideoPreview();
       return;
     }
-    
+
     renderFrameAtTime(videoPlaybackTime);
     updatePlaybackUI();
-    
+
     videoAnimationId = requestAnimationFrame(animLoop);
   }
-  
+
   videoAnimationId = requestAnimationFrame(animLoop);
 }
 
@@ -1026,13 +1026,13 @@ function pauseVideoPreview() {
   if (btnPlay) {
     btnPlay.innerHTML = '<i class="fa-solid fa-play"></i> プレビュー再生';
   }
-  
+
   if (window.speechSynthesis) {
     window.speechSynthesis.cancel();
   }
-  
+
   stopSynthesizedBgm();
-  
+
   if (videoAnimationId) {
     cancelAnimationFrame(videoAnimationId);
   }
@@ -1050,10 +1050,10 @@ function updatePlaybackUI() {
   const currentText = safeGetElement('video-time-current');
   const totalText = safeGetElement('video-time-total');
   const bar = safeGetElement('video-progress-bar');
-  
+
   if (currentText) currentText.textContent = videoPlaybackTime.toFixed(1) + '秒';
   if (totalText) totalText.textContent = videoTotalDuration.toFixed(1) + '秒';
-  
+
   if (bar) {
     const percentage = (videoPlaybackTime / videoTotalDuration) * 100;
     bar.style.width = percentage + '%';
@@ -1068,7 +1068,7 @@ function updatePlaybackUI() {
       const sceneNum = safeGetElement('preview-scene-num');
       const sceneTitle = safeGetElement('preview-scene-title');
       const sceneSpeech = safeGetElement('preview-scene-speech');
-      
+
       if (sceneNum) sceneNum.textContent = `シーン ${sceneIdx + 1} / 4 (${activeScene.time})`;
       if (sceneTitle) sceneTitle.textContent = activeScene.title;
       if (sceneSpeech) sceneSpeech.textContent = activeScene.speech;
@@ -1087,25 +1087,25 @@ function getActiveScriptScenes() {
 // 音声合成で現在のシーンを読み上げる
 function speakCurrentSceneSpeech() {
   if (!window.speechSynthesis || videoIsExporting) return;
-  
+
   const sceneIdx = Math.floor(videoPlaybackTime / 8);
   const scenes = getActiveScriptScenes();
   if (!scenes || !scenes[sceneIdx]) return;
-  
+
   window.speechSynthesis.cancel();
-  
+
   const text = scenes[sceneIdx].speech;
   const utterance = new SpeechSynthesisUtterance(text);
   utterance.lang = 'ja-JP';
   utterance.rate = 1.1; // ややスピーディーに
-  
+
   // 日本語話者設定
   const voices = window.speechSynthesis.getVoices();
   const jaVoice = voices.find(v => v.lang.startsWith('ja'));
   if (jaVoice) {
     utterance.voice = jaVoice;
   }
-  
+
   window.speechSynthesis.speak(utterance);
 }
 
@@ -1113,15 +1113,15 @@ function speakCurrentSceneSpeech() {
 function renderFrameAtTime(timeSec) {
   const canvas = safeGetElement('video-canvas');
   if (!canvas || !videoPreloadedImages) return;
-  
+
   const ctx = canvas.getContext('2d');
   const currentSceneIdx = Math.min(Math.floor(timeSec / 8), 3);
   const nextSceneIdx = Math.min(currentSceneIdx + 1, 3);
   const sceneTimeOffset = timeSec % 8; // このシーン内での経過時間(0〜8)
-  
+
   const scenes = getActiveScriptScenes();
   if (!scenes) return;
-  
+
   const currentScene = scenes[Math.min(currentSceneIdx, 3)];
 
   // 画像の選択
@@ -1146,14 +1146,14 @@ function renderFrameAtTime(timeSec) {
   const drawContainImg = (img, opacity) => {
     ctx.save();
     ctx.globalAlpha = opacity;
-    
+
     // 画像は完全に固定 (ズームやスライド、切り取りは一切行わない)
     ctx.translate(canvas.width / 2, canvas.height / 2);
-    
+
     const imgRatio = img.width / img.height;
     const canvasRatio = canvas.width / canvas.height;
     let renderW, renderH;
-    
+
     // 画面内にぴったり収める (Contain)
     if (imgRatio > canvasRatio) {
       renderW = canvas.width;
@@ -1162,7 +1162,7 @@ function renderFrameAtTime(timeSec) {
       renderH = canvas.height;
       renderW = canvas.height * imgRatio;
     }
-    
+
     ctx.drawImage(img, -renderW / 2, -renderH / 2, renderW, renderH);
     ctx.restore();
   };
@@ -1276,7 +1276,7 @@ function renderFrameAtTime(timeSec) {
     ctx.strokeStyle = '#000000';
     ctx.lineWidth = 6;
     ctx.lineJoin = 'round';
-    
+
     ctx.shadowColor = 'rgba(0, 0, 0, 0.9)';
     ctx.shadowBlur = 8;
     ctx.shadowOffsetX = 1;
@@ -1286,10 +1286,10 @@ function renderFrameAtTime(timeSec) {
     if (text.length > charsPerLine) {
       const line1 = text.substring(0, charsPerLine);
       const line2 = text.substring(charsPerLine);
-      
+
       ctx.strokeText(line1, canvas.width / 2, textY - 26);
       ctx.fillText(line1, canvas.width / 2, textY - 26);
-      
+
       ctx.strokeText(line2, canvas.width / 2, textY + 26);
       ctx.fillText(line2, canvas.width / 2, textY + 26);
     } else {
@@ -1310,7 +1310,7 @@ async function initAudioContext() {
       // 録画用にオーディオストリームノードを作成
       if (videoAudioContext.createMediaStreamDestination) {
         videoAudioDestination = videoAudioContext.createMediaStreamDestination();
-        
+
         // Chromeの無音トラック破棄バグ対策：微弱な無音信号を常時流し、トラックをアクティブに保ちます
         try {
           const silentOsc = videoAudioContext.createOscillator();
@@ -1334,23 +1334,23 @@ async function initAudioContext() {
 function startSynthesizedBgm() {
   if (!videoAudioContext) return;
   if (videoBgmInterval) clearInterval(videoBgmInterval);
-  
+
   // 書き出し中は録画ノード、プレビュー再生時はスピーカー（destination）へ動的にルーティング
   const dest = videoIsExporting ? videoAudioDestination : videoAudioContext.destination;
   let beatCount = 0;
-  
+
   // 0.5秒ごとにドラムキックとハイハットをシミュレーション
   videoBgmInterval = setInterval(() => {
     if (!videoIsPlaying && !videoIsExporting) return;
-    
+
     // ドラムキック (偶数拍)
     if (beatCount % 2 === 0) {
       triggerKick(videoAudioContext, dest);
     }
-    
+
     // ハイハット (全拍)
     triggerHihat(videoAudioContext, dest);
-    
+
     beatCount++;
   }, 500);
 }
@@ -1369,13 +1369,13 @@ function triggerKick(audioCtx, dest) {
     const gain = audioCtx.createGain();
     osc.connect(gain);
     gain.connect(dest);
-    
+
     osc.frequency.setValueAtTime(150, audioCtx.currentTime);
     osc.frequency.exponentialRampToValueAtTime(40, audioCtx.currentTime + 0.2);
-    
+
     gain.gain.setValueAtTime(0.4, audioCtx.currentTime);
     gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.2);
-    
+
     osc.start();
     osc.stop(audioCtx.currentTime + 0.2);
   } catch (e) {
@@ -1392,22 +1392,22 @@ function triggerHihat(audioCtx, dest) {
     for (let i = 0; i < bufferSize; i++) {
       data[i] = Math.random() * 2 - 1;
     }
-    
+
     const noise = audioCtx.createBufferSource();
     noise.buffer = buffer;
-    
+
     const filter = audioCtx.createBiquadFilter();
     filter.type = 'highpass';
     filter.frequency.value = 8000;
-    
+
     const gain = audioCtx.createGain();
     gain.gain.setValueAtTime(0.05, audioCtx.currentTime);
     gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.05);
-    
+
     noise.connect(filter);
     filter.connect(gain);
     gain.connect(dest);
-    
+
     noise.start();
   } catch (e) {
     console.error(e);
@@ -1420,24 +1420,24 @@ function playCoinSound(audioCtx, dest) {
     const osc1 = audioCtx.createOscillator();
     const osc2 = audioCtx.createOscillator();
     const gain = audioCtx.createGain();
-    
+
     osc1.type = 'sine';
     osc2.type = 'sine';
-    
+
     osc1.frequency.setValueAtTime(987.77, audioCtx.currentTime); // B5
     osc2.frequency.setValueAtTime(1318.51, audioCtx.currentTime + 0.05); // E6
-    
+
     gain.gain.setValueAtTime(0.001, audioCtx.currentTime);
     gain.gain.linearRampToValueAtTime(0.2, audioCtx.currentTime + 0.05);
     gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.7);
-    
+
     osc1.connect(gain);
     osc2.connect(gain);
     gain.connect(dest);
-    
+
     osc1.start();
     osc2.start();
-    
+
     osc1.stop(audioCtx.currentTime + 0.7);
     osc2.stop(audioCtx.currentTime + 0.7);
   } catch (e) {
@@ -1448,32 +1448,32 @@ function playCoinSound(audioCtx, dest) {
 // WebM 動画の作成・ダウンロード
 async function exportVideoAsFile() {
   if (videoIsExporting) return;
-  
+
   // 現在の再生を停止
   stopVideoPreview();
   await initAudioContext();
-  
+
   videoIsExporting = true;
   videoRecordedChunks = [];
-  
+
   const btnExport = safeGetElement('btn-video-export');
   const statusDiv = safeGetElement('export-status');
   const progressBar = safeGetElement('export-progress-bar');
   const progressText = safeGetElement('export-progress-text');
-  
+
   if (btnExport) btnExport.disabled = true;
   if (statusDiv) statusDiv.classList.remove('hidden');
-  
+
   const canvas = safeGetElement('video-canvas');
   if (!canvas) return;
 
   // キャンバスストリーム (30fps)
   const canvasStream = canvas.captureStream(30);
   const tracks = [];
-  
+
   // 映像トラックの追加
   canvasStream.getVideoTracks().forEach(track => tracks.push(track));
-  
+
   // 音声トラックの追加 (Web Audio から)
   if (videoAudioDestination) {
     videoAudioDestination.stream.getAudioTracks().forEach(track => {
@@ -1483,11 +1483,11 @@ async function exportVideoAsFile() {
 
   // スマホ対応：MediaStream作成時にトラック配列を直接渡すことで音声欠落を防ぎます
   const mixedStream = new MediaStream(tracks);
-  
+
   // MediaRecorder インスタンス生成 (スマホ・PC互換性を高めるため MP4/AAC 形式を最優先)
   let options = { mimeType: 'video/mp4;codecs=avc1,mp4a' };
   let extension = 'mp4';
-  
+
   if (!MediaRecorder.isTypeSupported(options.mimeType)) {
     options = { mimeType: 'video/mp4' };
   }
@@ -1503,7 +1503,7 @@ async function exportVideoAsFile() {
     options = { mimeType: 'video/webm' };
     extension = 'webm';
   }
-  
+
   try {
     videoRecorder = new MediaRecorder(mixedStream, options);
   } catch (e) {
@@ -1515,35 +1515,35 @@ async function exportVideoAsFile() {
       extension = 'webm';
     }
   }
-  
+
   videoRecorder.ondataavailable = (event) => {
     if (event.data && event.data.size > 0) {
       videoRecordedChunks.push(event.data);
     }
   };
-  
+
   videoRecorder.onstop = () => {
     const blob = new Blob(videoRecordedChunks, { type: videoRecorder.mimeType || 'video/webm' });
     const url = URL.createObjectURL(blob);
-    
+
     // ダウンロードリンクを生成して発火
     const a = document.createElement('a');
     a.style.display = 'none';
     a.href = url;
-    
+
     const activeTab = document.querySelector('.script-tab-btn.active');
     const styleKey = activeTab ? activeTab.getAttribute('data-style') : 'buzz';
     const prodNameClean = currentAnalysisData.productName.replace(/[\\/:*?"<>|]/g, '');
     a.download = `せどり動画台本_${styleKey}_${prodNameClean}.${extension}`;
-    
+
     document.body.appendChild(a);
     a.click();
-    
+
     setTimeout(() => {
       document.body.removeChild(a);
       window.URL.revokeObjectURL(url);
     }, 100);
-    
+
     // UIの元戻し
     videoIsExporting = false;
     if (btnExport) btnExport.disabled = false;
@@ -1553,7 +1553,7 @@ async function exportVideoAsFile() {
     drawStaticPreview();
     alert('動画ファイルの書き出しが完了し、ダウンロードを開始しました！');
   };
-  
+
   // 録画開始
   videoRecorder.start();
   startSynthesizedBgm();
@@ -1567,20 +1567,20 @@ async function exportVideoAsFile() {
     }
     const elapsed = (performance.now() - exportStartTime) / 1000;
     const progress = Math.min((elapsed / videoTotalDuration) * 100, 99);
-    
+
     if (progressBar) progressBar.style.width = progress + '%';
     if (progressText) progressText.textContent = Math.round(progress) + '%';
-    
+
     // 映像・音声合成用のフレーム描画とシーン切り替え
     videoPlaybackTime = elapsed;
     const currentSceneIdx = Math.floor(videoPlaybackTime / 8);
-    
+
     if (videoPlaybackTime >= videoTotalDuration) {
       clearInterval(timer);
       videoRecorder.stop();
       return;
     }
-    
+
     renderFrameAtTime(videoPlaybackTime);
   }, 33); // 約30fps
 }
@@ -1589,18 +1589,18 @@ async function exportVideoAsFile() {
 function downloadSrtFile() {
   const totalDuration = videoTotalDuration;
   const stepSec = totalDuration / 4;
-  
+
   const activeTab = document.querySelector('.script-tab-btn.active');
   const styleKey = activeTab ? activeTab.getAttribute('data-style') : 'buzz';
   const scenes = currentAnalysisData ? currentAnalysisData.scripts[styleKey] : null;
   if (!scenes) return;
-  
+
   let srtContent = '';
-  
+
   scenes.forEach((scene, index) => {
     const startSec = index * stepSec;
     const endSec = (index + 1) * stepSec;
-    
+
     const formatTime = (totalSec) => {
       const hrs = Math.floor(totalSec / 3600).toString().padStart(2, '0');
       const mins = Math.floor((totalSec % 3600) / 60).toString().padStart(2, '0');
@@ -1608,20 +1608,20 @@ function downloadSrtFile() {
       const ms = Math.floor((totalSec % 1) * 1000).toString().padStart(3, '0');
       return `${hrs}:${mins}:${secs},${ms}`;
     };
-    
+
     srtContent += `${index + 1}\n`;
     srtContent += `${formatTime(startSec)} --> ${formatTime(endSec)}\n`;
     srtContent += `${scene.speech}\n\n`;
   });
-  
+
   const blob = new Blob([srtContent], { type: 'text/srt;charset=utf-8;' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  
+
   const prodNameClean = currentAnalysisData.productName.replace(/[\\/:*?"<>|]/g, '');
   a.download = `字幕_${styleKey}_${prodNameClean}.srt`;
-  
+
   document.body.appendChild(a);
   a.click();
   document.body.removeChild(a);
@@ -1631,16 +1631,16 @@ function downloadSrtFile() {
 // JSON台本データのダウンロード
 function downloadJsonScript() {
   if (!currentAnalysisData) return;
-  
+
   const jsonStr = JSON.stringify(currentAnalysisData, null, 2);
   const blob = new Blob([jsonStr], { type: 'application/json;charset=utf-8;' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  
+
   const prodNameClean = currentAnalysisData.productName.replace(/[\\/:*?"<>|]/g, '');
   a.download = `台本データ_${prodNameClean}.json`;
-  
+
   document.body.appendChild(a);
   a.click();
   document.body.removeChild(a);
